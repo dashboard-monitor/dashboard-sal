@@ -29,18 +29,28 @@ if check_password():
     st.subheader("Monitoraggio SAL Progetti Minipia - Sincronizzato Live con Drive")
 
     try:
-        # ID univoco ed esatto del tuo Foglio Google
+        # ID univoco ed esatto del tuo Foglio Google estratto dallo screenshot
         SHEET_ID = "12gik-EYKeVeJvOpohkPM-nUVJLbiDkKpI-XT9Mx2RAA"
         
-        # RISOLUZIONE DEFINITIVA: Forziamo la lettura in CSV per evitare totalmente l'errore urlopen/DNS
-        url_csv = f"https://google.com{SHEET_ID}/gviz/tq?tqx=out:csv"
-        df = pd.read_csv(url_csv)
+        # Link di esportazione nativa che forza Google a inviare un file Excel (.xlsx) reale in background
+        url_diretto = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
+        
+        # Lettura iniziale della struttura dei fogli di lavoro dal cloud
+        excel_file = pd.ExcelFile(url_diretto, engine='openpyxl')
+        sheet_names = excel_file.sheet_names
+        
+        # Navigazione dei fogli nella barra laterale sinistra (GANTT_SAL_PROGETTI_EPAL, ecc.)
+        st.sidebar.header("📁 Navigazione Fogli")
+        selected_sheet = st.sidebar.selectbox("Seleziona il foglio da visualizzare", sheet_names)
+        
+        # Legge i dati in tempo reale dal foglio selezionato usando pandas
+        df = pd.read_excel(url_diretto, sheet_name=selected_sheet, engine='openpyxl')
         
         # Pulizia delle intestazioni di colonna e rimozione righe vuote
         df.columns = [str(c).strip() for c in df.columns]
         df = df.dropna(how='all')
         
-        st.write("### 📋 Dati attuali della dashboard")
+        st.write(f"### 📋 Dati attuali del foglio: **{selected_sheet}**")
         st.dataframe(df, use_container_width=True)
         
         st.markdown("---")
@@ -95,15 +105,10 @@ if check_password():
                         break
                 
                 col_percentuali = st.sidebar.selectbox("Colonna Valore da mostrare:", colonne, index=default_index)
-                st.subheader("📈 Grafico Singolo Interattivo")
+                st.subheader(f"📈 Grafico Singolo Interattivo: {selected_sheet}")
                 
                 df_plot[col_percentuali] = df_plot[col_percentuali].astype(str).str.replace('%', '', regex=False)
                 df_plot[col_percentuali] = pd.to_numeric(df_plot[col_percentuali], errors='coerce')
-                
-                # Moltiplica per 100 i decimali se la colonna riguarda le percentuali (es. 0.1895 diventa 18.95)
-                if "%" in col_percentuali.lower() or "completamento" in col_percentuali.lower() or "sal" in col_percentuali.lower():
-                    df_plot[col_percentuali] = df_plot[col_percentuali] * 100
-                
                 df_plot = df_plot.dropna(subset=[col_percentuali])
                 df_plot = df_plot.sort_values(by=col_percentuali, ascending=True)
                 
@@ -134,7 +139,7 @@ if check_password():
                 col_valori = st.sidebar.multiselect("Seleziona le colonne da confrontare:", colonne, default=default_selezionati if default_selezionati else [colonne])
                 
                 if col_valori:
-                    st.subheader("📈 Grafico di Confronto Interattivo")
+                    st.subheader(f"📈 Grafico di Confronto Interattivo: {selected_sheet}")
                     for col in col_valori:
                         df_plot[col] = df_plot[col].astype(str).str.replace('%', '', regex=False)
                         df_plot[col] = pd.to_numeric(df_plot[col], errors='coerce')
