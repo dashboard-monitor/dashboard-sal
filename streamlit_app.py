@@ -31,7 +31,7 @@ if check_password():
     st.subheader("Monitoraggio SAL Progetti Minipia")
 
     # Area drag and drop per inserire il file aggiornato in tempo reale dal tuo script JS
-    uploaded_file = st.file_input("Trascina qui il file Excel aggiornato (.xlsx)", type=["xlsx"])
+    uploaded_file = st.file_uploader("Trascina qui il file Excel aggiornato (.xlsx)", type=["xlsx"])
 
     if uploaded_file is not None:
         try:
