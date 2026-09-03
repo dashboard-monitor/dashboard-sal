@@ -33,7 +33,7 @@ if check_password():
         SHEET_ID = "12gik-EYKeVeJvOpohkPM-nUVJLbiDkKpI-XT9Mx2RAA"
         
         # Link di esportazione nativa che forza Google a inviare un file Excel (.xlsx) reale in background
-        url_diretto = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
+        url_diretto = f"https://google.com{SHEET_ID}/export?format=xlsx"
         
         # Lettura iniziale della struttura dei fogli di lavoro dal cloud
         excel_file = pd.ExcelFile(url_diretto, engine='openpyxl')
@@ -113,16 +113,21 @@ if check_password():
                 df_plot = df_plot.sort_values(by=col_percentuali, ascending=True)
                 
                 if not df_plot.empty:
-                    suffix = "%" if ("%" in col_percentuali.lower() or "completamento" in col_percentuali.lower() or "sal" in col_percentuali.lower()) else ""
+                    is_percentage_col = "%" in col_percentuali.lower() or "completamento" in col_percentuali.lower() or "sal" in col_percentuali.lower()
+                    
                     fig = px.bar(
                         df_plot, x=col_percentuali, y=col_progetti, orientation='h',
-                        text=df_plot[col_percentuali].apply(lambda x: f"{x:.1f}{suffix}" if pd.notnull(x) else ""),
+                        # text_auto='.0%' formatta automaticamente i decimali in percentuali sulle barre (es. 0.4 -> 40%)
+                        text_auto='.0%' if is_percentage_col else True,
                         color=col_percentuali, color_continuous_scale=px.colors.sequential.Viridis,
                         labels={col_percentuali: col_percentuali, col_progetti: "Progetto"}
                     )
                     fig.update_layout(height=max(400, len(df_plot) * 35), margin=dict(l=150, r=40, t=40, b=40), hovermode="y unified")
-                    if suffix == "%":
-                        fig.update_xaxes(ticksuffix="%")
+                    
+                    if is_percentage_col:
+                        # Forza l'asse X a mostrare i numeri come percentuali (es. 1.0 = 100%)
+                        fig.update_xaxes(tickformat='.0%')
+                        
                     fig.update_yaxes(categoryorder='total ascending')
                     fig.update_traces(textposition='outside', marker_line_color='rgb(8,48,107)', marker_line_width=1.5, opacity=0.9)
                     st.plotly_chart(fig, use_container_width=True)
