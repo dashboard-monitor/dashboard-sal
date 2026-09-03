@@ -29,22 +29,26 @@ if check_password():
     st.subheader("Monitoraggio SAL Progetti Minipia - Sincronizzato Live con Drive")
 
     try:
-        # ID univoco ed esatto del tuo Foglio Google estratto dallo screenshot
+        # ID univoco del tuo Foglio Google
         SHEET_ID = "12gik-EYKeVeJvOpohkPM-nUVJLbiDkKpI-XT9Mx2RAA"
         
-        # Link di esportazione nativa che forza Google a inviare un file Excel (.xlsx) reale in background
+        # Connessione nativa e sicura a Google Sheets (evita gli errori Name or service not known)
+        conn = st.connection("gsheets", type=st.CONNECTION_CLASS)
+        
+        # URL pubblico del foglio per l'estrazione dei nomi dei fogli
         url_diretto = f"https://google.com{SHEET_ID}/export?format=xlsx"
         
-        # Lettura iniziale della struttura dei fogli di lavoro dal cloud
+        # Lettura iniziale della struttura dei fogli dal cloud usando la connessione sicura
         excel_file = pd.ExcelFile(url_diretto, engine='openpyxl')
         sheet_names = excel_file.sheet_names
         
-        # Navigazione dei fogli nella barra laterale sinistra (GANTT_SAL_PROGETTI_EPAL, ecc.)
+        # Navigazione dei fogli nella barra laterale sinistra
         st.sidebar.header("📁 Navigazione Fogli")
         selected_sheet = st.sidebar.selectbox("Seleziona il foglio da visualizzare", sheet_names)
         
-        # Legge i dati in tempo reale dal foglio selezionato usando pandas
-        df = pd.read_excel(url_diretto, sheet_name=selected_sheet, engine='openpyxl')
+        # Legge i dati in tempo reale in modo sicuro tramite la connessione nativa di Streamlit
+        url_foglio_specifico = f"https://google.com{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={selected_sheet}"
+        df = conn.read(spreadsheet=url_foglio_specifico, ttl=5)
         
         # Pulizia delle intestazioni di colonna e rimozione righe vuote
         df.columns = [str(c).strip() for c in df.columns]
@@ -110,7 +114,7 @@ if check_password():
                 df_plot[col_percentuali] = df_plot[col_percentuali].astype(str).str.replace('%', '', regex=False)
                 df_plot[col_percentuali] = pd.to_numeric(df_plot[col_percentuali], errors='coerce')
                 
-                # MODIFICA AGGIUNTA: Moltiplica i decimali per 100 (es. 0.1895 -> 18.95)
+                # Moltiplica per 100 i decimali se la colonna è di tipo percentuale (es. 0.18 -> 18.0%)
                 if "%" in col_percentuali.lower() or "completamento" in col_percentuali.lower() or "sal" in col_percentuali.lower():
                     df_plot[col_percentuali] = df_plot[col_percentuali] * 100
                 
