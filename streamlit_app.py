@@ -33,7 +33,7 @@ if check_password():
         SHEET_ID = "12gik-EYKeVeJvOpohkPM-nUVJLbiDkKpI-XT9Mx2RAA"
         
         # Link di esportazione nativa che forza Google a inviare un file Excel (.xlsx) reale in background
-        url_diretto = f"https://google.com{SHEET_ID}/export?format=xlsx"
+        url_diretto = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
         
         # Lettura iniziale della struttura dei fogli di lavoro dal cloud
         excel_file = pd.ExcelFile(url_diretto, engine='openpyxl')
