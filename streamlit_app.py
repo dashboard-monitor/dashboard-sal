@@ -30,12 +30,18 @@ if check_password():
     st.subheader("Monitoraggio SAL Progetti Minipia - Sincronizzato Live con Drive")
 
     try:
-        # Inizializza la connessione nativa protetta con Google Sheets
+        # Inizializza la connessione nativa protetta usando la chiave [connections.gsheets] dei Secrets
         conn = st.connection("gsheets", type=GSheetsConnection)
         
-        # Recupera l'elenco dei fogli scaricando temporaneamente la struttura in background
-        url_foglio = st.secrets["public_gsheets_url"]
-        excel_file = pd.ExcelFile(f"{url_foglio.split('/edit')[0]}/export?format=xlsx", engine='openpyxl')
+        # Recupera l'URL memorizzato automaticamente dalla chiave spreadsheet nei Secrets
+        url_foglio = st.secrets["connections.gsheets"]["spreadsheet"]
+        
+        # Forza la pulizia dell'URL per estrarre la struttura in background
+        base_url = url_foglio.split('/edit')[0]
+        url_diretto = f"{base_url}/export?format=xlsx"
+        
+        # Lettura iniziale della struttura dei fogli di lavoro dal cloud
+        excel_file = pd.ExcelFile(url_diretto, engine='openpyxl')
         sheet_names = excel_file.sheet_names
         
         # Navigazione dei fogli nella barra laterale sinistra
@@ -43,7 +49,7 @@ if check_password():
         selected_sheet = st.sidebar.selectbox("Seleziona il foglio da visualizzare", sheet_names)
         
         # Legge i dati in tempo reale dal foglio selezionato senza bisogno di upload manuali
-        df = conn.read(url=url_foglio, sheet_name=selected_sheet, ttl=5) # Cache di soli 5 secondi per avere dati live
+        df = conn.read(sheet_name=selected_sheet, ttl=5) # Cache minima per avere dati live ad ogni refresh
         
         # Pulizia delle intestazioni di colonna e rimozione righe vuote
         df.columns = [str(c).strip() for c in df.columns]
