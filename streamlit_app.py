@@ -29,21 +29,15 @@ if check_password():
     st.subheader("Monitoraggio SAL Progetti Minipia - Sincronizzato Live con Drive")
 
     try:
-        # ID univoco ed esatto del tuo Foglio Google estratto dallo screenshot
+        # ID univoco ed esatto del tuo Foglio Google
         SHEET_ID = "12gik-EYKeVeJvOpohkPM-nUVJLbiDkKpI-XT9Mx2RAA"
         
-        # SBLOCCO DI RETE: Proviamo prima il formato standard, se fallisce usiamo il formato CSV alternativo che non blocca i DNS
-        try:
-            url_diretto = f"https://google.com{SHEET_ID}/export?format=xlsx"
-            excel_file = pd.ExcelFile(url_diretto, engine='openpyxl')
-            sheet_names = excel_file.sheet_names
-            df = pd.read_excel(url_diretto, sheet_name=sheet_names[0], engine='openpyxl')
-        except Exception:
-            # Fallback di emergenza se la rete di Streamlit va in blocco "Name or service not known"
-            url_csv = f"https://google.com{SHEET_ID}/gviz/tq?tqx=out:csv"
-            df = pd.read_csv(url_csv)
-            sheet_names = ["Foglio Sincronizzato"]
-            
+        # Link in formato CSV esportabile, estremamente leggero e nativamente digerito da Pandas senza blocchi DNS
+        url_csv = f"https://google.com{SHEET_ID}/gviz/tq?tqx=out:csv"
+        
+        # Lettura sicura dei dati
+        df = pd.read_csv(url_csv)
+        sheet_names = ["Foglio Monitoraggio SAL"]
         selected_sheet = sheet_names[0]
         
         # Pulizia delle intestazioni di colonna e rimozione righe vuote
@@ -110,7 +104,7 @@ if check_password():
                 df_plot[col_percentuali] = df_plot[col_percentuali].astype(str).str.replace('%', '', regex=False)
                 df_plot[col_percentuali] = pd.to_numeric(df_plot[col_percentuali], errors='coerce')
                 
-                # Moltiplica per 100 i decimali per visualizzare la scala percentuale reale (es. 1.0 -> 100.0%)
+                # Moltiplica per 100 i decimali se la colonna riguarda le percentuali (es. 0.1895 diventa 18.95)
                 if "%" in col_percentuali.lower() or "completamento" in col_percentuali.lower() or "sal" in col_percentuali.lower():
                     df_plot[col_percentuali] = df_plot[col_percentuali] * 100
                 
@@ -171,4 +165,4 @@ if check_password():
             st.warning("La struttura di questo foglio non contiene abbastanza colonne.")
             
     except Exception as e:
-        st.error(f"Errore critico interfaccia Cloud: {e}")
+        st.error(f"Errore di sincronizzazione Cloud: {e}")
