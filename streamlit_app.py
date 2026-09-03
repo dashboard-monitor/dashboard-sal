@@ -29,18 +29,32 @@ if check_password():
     st.subheader("Monitoraggio SAL Progetti Minipia - Sincronizzato Live con Drive")
 
     try:
-        # 1. CONNESSIONE NATIVA COMPATIBILE: Usa la configurazione presente nei tuoi Secrets
-        # Questa riga non usa urlopen e non fa crashare la rete di Streamlit
-        conn = st.connection("gsheets", type="spreadsheet")
+        # ID univoco ed esatto del tuo Foglio Google
+        SHEET_ID = "12gik-EYKeVeJvOpohkPM-nUVJLbiDkKpI-XT9Mx2RAA"
         
-        # 2. LETTURA DEI DATI: Scarica direttamente il foglio principale configurato nei Secrets
-        df = conn.read(ttl=5)
+        # Link di esportazione nativa ripristinato
+        url_diretto = f"https://google.com{SHEET_ID}/export?format=xlsx"
+        
+        # Lettura iniziale della struttura dei fogli dal cloud
+        excel_file = pd.ExcelFile(url_diretto, engine='openpyxl')
+        sheet_names = excel_file.sheet_names
+        
+        # Navigazione dei fogli nella barra laterale sinistra
+        st.sidebar.header("📁 Navigazione Fogli")
+        selected_sheet = st.sidebar.selectbox("Seleziona il foglio da visualizzare", sheet_names)
+        
+        # SBLOCCO RETE: Usiamo st.cache_data per forzare Streamlit a non usare sessioni DNS vecchie e bloccate
+        @st.cache_data(ttl=0)
+        def load_data(url, sheet):
+            return pd.read_excel(url, sheet_name=sheet, engine='openpyxl')
+            
+        df = load_data(url_diretto, selected_sheet)
         
         # Pulizia delle intestazioni di colonna e rimozione righe vuote
         df.columns = [str(c).strip() for c in df.columns]
         df = df.dropna(how='all')
         
-        st.write("### 📋 Dati attuali sincronizzati dal cloud")
+        st.write(f"### 📋 Dati attuali del foglio: **{selected_sheet}**")
         st.dataframe(df, use_container_width=True)
         
         st.markdown("---")
@@ -95,7 +109,7 @@ if check_password():
                         break
                 
                 col_percentuali = st.sidebar.selectbox("Colonna Valore da mostrare:", colonne, index=default_index)
-                st.subheader("📈 Grafico Singolo Interattivo")
+                st.subheader(f"📈 Grafico Singolo Interattivo: {selected_sheet}")
                 
                 df_plot[col_percentuali] = df_plot[col_percentuali].astype(str).str.replace('%', '', regex=False)
                 df_plot[col_percentuali] = pd.to_numeric(df_plot[col_percentuali], errors='coerce')
@@ -107,7 +121,6 @@ if check_password():
                     
                     fig = px.bar(
                         df_plot, x=col_percentuali, y=col_progetti, orientation='h',
-                        # Formatta graficamente i decimali in percentuali sulle barre (es. 0.4 -> 40%)
                         text_auto='.0%' if is_percentage_col else True,
                         color=col_percentuali, color_continuous_scale=px.colors.sequential.Viridis,
                         labels={col_percentuali: col_percentuali, col_progetti: "Progetto"}
@@ -115,7 +128,6 @@ if check_password():
                     fig.update_layout(height=max(400, len(df_plot) * 35), margin=dict(l=150, r=40, t=40, b=40), hovermode="y unified")
                     
                     if is_percentage_col:
-                        # Forza l'asse X a mostrare la scala in percentuali (1.0 = 100%)
                         fig.update_xaxes(tickformat='.0%')
                         
                     fig.update_yaxes(categoryorder='total ascending')
@@ -134,7 +146,7 @@ if check_password():
                 col_valori = st.sidebar.multiselect("Seleziona le colonne da confrontare:", colonne, default=default_selezionati if default_selezionati else [colonne])
                 
                 if col_valori:
-                    st.subheader("📈 Grafico di Confronto Interattivo")
+                    st.subheader(f"📈 Grafico di Confronto Interattivo: {selected_sheet}")
                     for col in col_valori:
                         df_plot[col] = df_plot[col].astype(str).str.replace('%', '', regex=False)
                         df_plot[col] = pd.to_numeric(df_plot[col], errors='coerce')
