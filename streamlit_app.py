@@ -17,7 +17,8 @@ def check_password():
     st.title("🔒 Accesso Riservato - Monitoraggio SAL")
     password = st.text_input("Inserisci la password del team:", type="password")
     if st.button("Accedi"):
-        if password == "Innov_TeAm2026!": 
+        # Legge la password direttamente dai Secrets di Streamlit
+        if password == st.secrets["PASSWORD_TEAM"]: 
             st.session_state["password_correct"] = True
             st.rerun()
         else:
@@ -94,4 +95,4 @@ if check_password():
             st.warning("Struttura delle colonne non idonea alla generazione automatica del grafico.")
             
     except Exception as e:
-        st.error(f"Impossibile leggere il file. Verifica la configurazione nei Secrets. Errore: {e}")
+        st.error(f"Impossibile leggere il file. Verifica la configurazione nei Secrets di Streamlit. Errore: {e}")
