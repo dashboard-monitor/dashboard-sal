@@ -34,7 +34,7 @@ if check_password():
         # ID univoco ed esatto del tuo Foglio Google estratto dallo screenshot
         SHEET_ID = "12gik-EYKeVeJvOpohkPM-nUVJLbiDkKpI-XT9Mx2RAA"
         
-        # Link di esportazione nativa che forza Google a inviare un file Excel (.xlsx) reale in background
+        # Link di esportazione nativa ripristinato correttamente
         url_diretto = f"https://google.com{SHEET_ID}/export?format=xlsx"
         
         # AGGIORNAMENTO DI RETE SICURO: Scarica il file tramite richiesta HTTP per evitare il blocco DNS
