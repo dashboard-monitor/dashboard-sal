@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# Configurazione della pagina per grafica estesa
+# Configurazione della pagina per grafica estesa ad alta risoluzione
 st.set_page_config(page_title="Dashboard Monitoraggio SAL", layout="wide")
 
 def check_password():
@@ -29,14 +29,17 @@ if check_password():
     st.subheader("Monitoraggio SAL Progetti Minipia - Sincronizzato Live con Drive")
 
     try:
-        # Il link ridotto inserito direttamente nel codice sorgente in modo lineare e privo di interruzioni
-        url_diretto = "https://google.com"
+        # ID univoco ed esatto del tuo Foglio Google estratto dallo screenshot
+        SHEET_ID = "12gik-EYKeVeJvOpohkPM-nUVJLbiDkKpI-XT9Mx2RAA"
         
-        # Lettura iniziale della struttura dei fogli di lavoro dal cloud (carica in memoria openpyxl)
+        # Link di esportazione nativa che forza Google a inviare un file Excel (.xlsx) reale in background
+        url_diretto = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
+        
+        # Lettura iniziale della struttura dei fogli di lavoro dal cloud
         excel_file = pd.ExcelFile(url_diretto, engine='openpyxl')
         sheet_names = excel_file.sheet_names
         
-        # Navigazione dei fogli nella barra laterale sinistra
+        # Navigazione dei fogli nella barra laterale sinistra (GANTT_SAL_PROGETTI_EPAL, ecc.)
         st.sidebar.header("📁 Navigazione Fogli")
         selected_sheet = st.sidebar.selectbox("Seleziona il foglio da visualizzare", sheet_names)
         
