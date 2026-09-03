@@ -17,7 +17,6 @@ def check_password():
     st.title("🔒 Accesso Riservato - Monitoraggio SAL")
     password = st.text_input("Inserisci la password del team:", type="password")
     if st.button("Accedi"):
-        # Legge la password direttamente dai Secrets di Streamlit
         if password == st.secrets["PASSWORD_TEAM"]: 
             st.session_state["password_correct"] = True
             st.rerun()
@@ -28,30 +27,33 @@ def check_password():
 # Blocco di sicurezza
 if check_password():
     st.title("📊 Applicazione Avanzata di Data Visualization")
-    st.subheader("Monitoraggio SAL Progetti Minipia - Cloud Sinc")
+    st.subheader("Monitoraggio SAL Progetti Minipia - Sincronizzato con Google Sheets")
 
     try:
-        # Il codice legge il link direttamente dalla cassaforte protetta di Streamlit
-        LINK_DRIVE = st.secrets["LINK_GOOGLE_DRIVE"]
+        # Recupera l'URL originale del Foglio Google dai Secrets privati
+        LINK_ORIGINALE = st.secrets["LINK_GOOGLE_DRIVE"]
 
-        # Trasforma il link di Drive in un link di download diretto in background
-        if "://google.com" in LINK_DRIVE:
-            file_id = re.search(r'/d/([^/]+)', LINK_DRIVE)
-            if file_id:
-                url_diretto = f"https://google.com{file_id.group(1)}/export?format=xlsx"
-            else:
-                url_diretto = LINK_DRIVE
+        # Trasforma l'URL web del foglio in un link di esportazione diretta in formato Excel (XLSX)
+        # Estrae l'ID univoco del foglio compreso tra '/d/' e '/edit'
+        match = re.search(r'/d/([^/]+)', LINK_ORIGINALE)
+        if match:
+            spreadsheet_id = match.group(1)
+            url_diretto = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=xlsx"
         else:
-            url_diretto = LINK_DRIVE
+            url_diretto = LINK_ORIGINALE
 
-        # Lettura automatica del file dal Cloud
-        excel_file = pd.ExcelFile(url_diretto)
+        # Lettura dei fogli di lavoro dal cloud (carica in memoria openpyxl)
+        excel_file = pd.ExcelFile(url_diretto, engine='openpyxl')
         sheet_names = excel_file.sheet_names
         
+        # Navigazione dei fogli nella barra laterale (GANTT_SAL_PROGETTI_EPAL, ecc.)
         st.sidebar.header("Navigazione Fogli")
         selected_sheet = st.sidebar.selectbox("Seleziona il foglio da visualizzare", sheet_names)
         
-        df = pd.read_excel(url_diretto, sheet_name=selected_sheet)
+        # Lettura del foglio specifico selezionato dall'utente
+        df = pd.read_excel(url_diretto, sheet_name=selected_sheet, engine='openpyxl')
+        
+        # Pulizia intestazioni e righe vuote
         df.columns = [str(c).strip() for c in df.columns]
         df = df.dropna(how='all')
         
@@ -63,13 +65,15 @@ if check_password():
         
         colonne = df.columns.tolist()
         if len(colonne) >= 2:
-            col_progetti = colonne
-            col_percentuali = colonne
+            col_progetti = colonne[0]     # Prima colonna: I nomi dei progetti
+            col_percentuali = colonne[1]  # Seconda colonna: % Completamento
             
+            # Converte i testi come '81%' in numeri decimali puliti
             df[col_percentuali] = pd.to_numeric(df[col_percentuali].astype(str).str.replace('%', ''), errors='coerce')
             df = df.dropna(subset=[col_percentuali])
             df = df.sort_values(by=col_percentuali, ascending=True)
             
+            # Generazione del grafico a barre orizzontali interattivo
             fig = px.bar(
                 df, 
                 x=col_percentuali, 
@@ -92,7 +96,7 @@ if check_password():
             
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.warning("Struttura delle colonne non idonea alla generazione automatica del grafico.")
+            st.warning("La struttura di questo foglio non contiene abbastanza colonne per generare il grafico automaticamente.")
             
     except Exception as e:
-        st.error(f"Impossibile leggere il file. Verifica la configurazione nei Secrets di Streamlit. Errore: {e}")
+        st.error(f"Errore di sincronizzazione Cloud: verifica che il link nei Secrets sia corretto e impostato su 'Chiunque abbia il link'. Dettaglio: {e}")
