@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import requests
+import io
 
 # Configurazione della pagina per grafica estesa ad alta risoluzione
 st.set_page_config(page_title="Dashboard Monitoraggio SAL", layout="wide")
@@ -35,16 +37,21 @@ if check_password():
         # Link di esportazione nativa che forza Google a inviare un file Excel (.xlsx) reale in background
         url_diretto = f"https://google.com{SHEET_ID}/export?format=xlsx"
         
-        # Lettura iniziale della struttura dei fogli di lavoro dal cloud
-        excel_file = pd.ExcelFile(url_diretto, engine='openpyxl')
+        # AGGIORNAMENTO DI RETE SICURO: Scarica il file tramite richiesta HTTP per evitare il blocco DNS
+        response = requests.get(url_diretto, headers={'User-Agent': 'Mozilla/5.0'})
+        response.raise_for_status()
+        file_bytes = io.BytesIO(response.content)
+        
+        # Lettura della struttura dei fogli dal file scaricato in memoria
+        excel_file = pd.ExcelFile(file_bytes, engine='openpyxl')
         sheet_names = excel_file.sheet_names
         
         # Navigazione dei fogli nella barra laterale sinistra (GANTT_SAL_PROGETTI_EPAL, ecc.)
         st.sidebar.header("📁 Navigazione Fogli")
         selected_sheet = st.sidebar.selectbox("Seleziona il foglio da visualizzare", sheet_names)
         
-        # Legge i dati in tempo reale dal foglio selezionato usando pandas
-        df = pd.read_excel(url_diretto, sheet_name=selected_sheet, engine='openpyxl')
+        # Legge i dati in tempo reale dal foglio selezionato
+        df = pd.read_excel(file_bytes, sheet_name=selected_sheet, engine='openpyxl')
         
         # Pulizia delle intestazioni di colonna e rimozione righe vuote
         df.columns = [str(c).strip() for c in df.columns]
@@ -110,7 +117,7 @@ if check_password():
                 df_plot[col_percentuali] = df_plot[col_percentuali].astype(str).str.replace('%', '', regex=False)
                 df_plot[col_percentuali] = pd.to_numeric(df_plot[col_percentuali], errors='coerce')
                 
-                # 👇 MODIFICA APPLICATA QUI: Moltiplica per 100 i decimali se la colonna è di tipo percentuale
+                # Moltiplica per 100 i decimali se la colonna è di tipo percentuale
                 if "%" in col_percentuali.lower() or "completamento" in col_percentuali.lower() or "sal" in col_percentuali.lower():
                     df_plot[col_percentuali] = df_plot[col_percentuali] * 100
                 
