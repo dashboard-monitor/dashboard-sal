@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import re
 
 # Configurazione della pagina per grafica estesa
 st.set_page_config(page_title="Dashboard Monitoraggio SAL", layout="wide")
@@ -30,16 +29,11 @@ if check_password():
     st.subheader("Monitoraggio SAL Progetti Minipia - Sincronizzato con Google Sheets")
 
     try:
-        # Il codice legge il link di nascosto dalla cassaforte protetta di Streamlit
-        LINK_ORIGINALE = st.secrets["LINK_GOOGLE_DRIVE"]
-
-        # Trasforma l'URL web del foglio in un link di esportazione diretta in formato Excel (XLSX)
-        match = re.search(r'/d/([^/]+)', LINK_ORIGINALE)
-        if match:
-            spreadsheet_id = match.group(1)
-            url_diretto = f"https://google.com{spreadsheet_id}/export?format=xlsx"
-        else:
-            url_diretto = LINK_ORIGINALE
+        # Recupera l'ID corto e protetto dalla cassaforte di Streamlit
+        SHEET_ID = st.secrets["GOOGLE_SHEET_ID"].strip()
+        
+        # Ricostruisce l'indirizzo di download diretto in background in modo sicuro
+        url_diretto = f"https://google.com{SHEET_ID}/export?format=xlsx"
 
         # Lettura dei fogli di lavoro dal cloud
         excel_file = pd.ExcelFile(url_diretto, engine='openpyxl')
@@ -64,10 +58,10 @@ if check_password():
         
         colonne = df.columns.tolist()
         if len(colonne) >= 2:
-            col_progetti = colonne     # Prima colonna: I nomi dei progetti
-            col_percentuali = colonne  # Seconda colonna: % Completamento
+            col_progetti = colonne     
+            col_percentuali = colonne  
             
-            # Converte i testi come '81%' in numeri decimali puliti
+            # Converte le stringhe percentuali in numeri decimali puliti
             df[col_percentuali] = pd.to_numeric(df[col_percentuali].astype(str).str.replace('%', ''), errors='coerce')
             df = df.dropna(subset=[col_percentuali])
             df = df.sort_values(by=col_percentuali, ascending=True)
@@ -99,4 +93,4 @@ if check_password():
             st.warning("La struttura di questo foglio non contiene abbastanza colonne per generare il grafico automaticamente.")
             
     except Exception as e:
-        st.error(f"Errore di sincronizzazione Cloud: verifica i tuoi Secrets. Dettaglio: {e}")
+        st.error(f"Errore di sincronizzazione Cloud: verifica la configurazione dei Secrets di Streamlit. Dettaglio: {e}")
