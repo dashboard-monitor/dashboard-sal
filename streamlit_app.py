@@ -30,7 +30,7 @@ if check_password():
     st.subheader("Monitoraggio SAL Progetti Minipia - Sincronizzato con Google Sheets")
 
     try:
-        # Recupera l'URL originale del Foglio Google dai Secrets privati
+        # Il codice legge il link di nascosto dalla cassaforte protetta di Streamlit
         LINK_ORIGINALE = st.secrets["LINK_GOOGLE_DRIVE"]
 
         # Trasforma l'URL web del foglio in un link di esportazione diretta in formato Excel (XLSX)
@@ -64,8 +64,8 @@ if check_password():
         
         colonne = df.columns.tolist()
         if len(colonne) >= 2:
-            col_progetti = colonne[0]     # Prima colonna: I nomi dei progetti
-            col_percentuali = colonne[1]  # Seconda colonna: % Completamento
+            col_progetti = colonne     # Prima colonna: I nomi dei progetti
+            col_percentuali = colonne  # Seconda colonna: % Completamento
             
             # Converte i testi come '81%' in numeri decimali puliti
             df[col_percentuali] = pd.to_numeric(df[col_percentuali].astype(str).str.replace('%', ''), errors='coerce')
@@ -84,14 +84,12 @@ if check_password():
                 labels={col_percentuali: "Stato Avanzamento Lavori (SAL)", col_progetti: "Progetto"}
             )
             
-            # Configurazione layout generale
+            # Configurazione layout ed assi senza conflitti
             fig.update_layout(
                 height=600,
                 margin=dict(l=150, r=20, t=40, b=40),
                 hovermode="y unified"
             )
-            
-            # Configurazione assi nativa senza conflitti
             fig.update_xaxes(ticksuffix="%")
             fig.update_yaxes(categoryorder='total ascending')
             fig.update_traces(textposition='outside', marker_line_color='rgb(8,48,107)', marker_line_width=1.5, opacity=0.9)
