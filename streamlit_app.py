@@ -32,25 +32,25 @@ if check_password():
         # ID univoco ed esatto del tuo Foglio Google estratto dallo screenshot
         SHEET_ID = "12gik-EYKeVeJvOpohkPM-nUVJLbiDkKpI-XT9Mx2RAA"
         
-        # Link di esportazione nativa che forza Google a inviare un file Excel (.xlsx) reale in background
-        url_diretto = f"https://google.com{SHEET_ID}/export?format=xlsx"
-        
-        # Lettura iniziale della struttura dei fogli di lavoro dal cloud
-        excel_file = pd.ExcelFile(url_diretto, engine='openpyxl')
-        sheet_names = excel_file.sheet_names
-        
-        # Navigazione dei fogli nella barra laterale sinistra (GANTT_SAL_PROGETTI_EPAL, ecc.)
-        st.sidebar.header("📁 Navigazione Fogli")
-        selected_sheet = st.sidebar.selectbox("Seleziona il foglio da visualizzare", sheet_names)
-        
-        # Legge i dati in tempo reale dal foglio selezionato usando pandas
-        df = pd.read_excel(url_diretto, sheet_name=selected_sheet, engine='openpyxl')
+        # SBLOCCO DI RETE: Proviamo prima il formato standard, se fallisce usiamo il formato CSV alternativo che non blocca i DNS
+        try:
+            url_diretto = f"https://google.com{SHEET_ID}/export?format=xlsx"
+            excel_file = pd.ExcelFile(url_diretto, engine='openpyxl')
+            sheet_names = excel_file.sheet_names
+            df = pd.read_excel(url_diretto, sheet_name=sheet_names[0], engine='openpyxl')
+        except Exception:
+            # Fallback di emergenza se la rete di Streamlit va in blocco "Name or service not known"
+            url_csv = f"https://google.com{SHEET_ID}/gviz/tq?tqx=out:csv"
+            df = pd.read_csv(url_csv)
+            sheet_names = ["Foglio Sincronizzato"]
+            
+        selected_sheet = sheet_names[0]
         
         # Pulizia delle intestazioni di colonna e rimozione righe vuote
         df.columns = [str(c).strip() for c in df.columns]
         df = df.dropna(how='all')
         
-        st.write(f"### 📋 Dati attuali del foglio: **{selected_sheet}**")
+        st.write(f"### 📋 Dati attuali della dashboard")
         st.dataframe(df, use_container_width=True)
         
         st.markdown("---")
@@ -105,12 +105,12 @@ if check_password():
                         break
                 
                 col_percentuali = st.sidebar.selectbox("Colonna Valore da mostrare:", colonne, index=default_index)
-                st.subheader(f"📈 Grafico Singolo Interattivo: {selected_sheet}")
+                st.subheader("📈 Grafico Singolo Interattivo")
                 
                 df_plot[col_percentuali] = df_plot[col_percentuali].astype(str).str.replace('%', '', regex=False)
                 df_plot[col_percentuali] = pd.to_numeric(df_plot[col_percentuali], errors='coerce')
                 
-                # Moltiplica per 100 i decimali se la colonna riguarda le percentuali (es. 0.1895 diventa 18.95)
+                # Moltiplica per 100 i decimali per visualizzare la scala percentuale reale (es. 1.0 -> 100.0%)
                 if "%" in col_percentuali.lower() or "completamento" in col_percentuali.lower() or "sal" in col_percentuali.lower():
                     df_plot[col_percentuali] = df_plot[col_percentuali] * 100
                 
@@ -144,7 +144,7 @@ if check_password():
                 col_valori = st.sidebar.multiselect("Seleziona le colonne da confrontare:", colonne, default=default_selezionati if default_selezionati else [colonne])
                 
                 if col_valori:
-                    st.subheader(f"📈 Grafico di Confronto Interattivo: {selected_sheet}")
+                    st.subheader("📈 Grafico di Confronto Interattivo")
                     for col in col_valori:
                         df_plot[col] = df_plot[col].astype(str).str.replace('%', '', regex=False)
                         df_plot[col] = pd.to_numeric(df_plot[col], errors='coerce')
@@ -171,4 +171,4 @@ if check_password():
             st.warning("La struttura di questo foglio non contiene abbastanza colonne.")
             
     except Exception as e:
-        st.error(f"Errore di sincronizzazione Cloud: {e}")
+        st.error(f"Errore critico interfaccia Cloud: {e}")
