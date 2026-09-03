@@ -53,69 +53,111 @@ if check_password():
             
             st.markdown("---")
             
-            # Configurazione dinamica delle colonne nella barra laterale per evitare errori
+            # Configurazione dinamica delle colonne nella barra laterale
             colonne = df.columns.tolist()
             
             if len(colonne) >= 2:
                 st.sidebar.markdown("---")
                 st.sidebar.header("⚙️ Configurazione Grafico")
                 
-                # Permette all'utente di selezionare quali colonne usare per i progetti e le percentuali
+                # Selezione della colonna dei progetti
                 col_progetti = st.sidebar.selectbox("Colonna Nomi Progetti:", colonne, index=0)
                 
-                # Cerca di indovinare la colonna percentuale (se contiene 'comp' o '%'), altrimenti prende la seconda
-                default_index = 1
-                for i, col in enumerate(colonne):
-                    if '%' in col.lower() or 'completamento' in col.lower() or 'sal' in col.lower():
-                        default_index = i
-                        break
+                # NUOVO SELETTORE: Scegli il tipo di grafico da visualizzare
+                tipo_grafico = st.sidebar.radio(
+                    "Scegli lo stile del grafico:",
+                    ["Singolo Valore (Stile Classico)", "Confronto Doppio (Fatto vs Da Fare)"]
+                )
                 
-                col_percentuali = st.sidebar.selectbox("Colonna Percentuali SAL:", colonne, index=default_index)
-                
-                st.subheader(f"📈 Grafico Avanzamento Interattivo: {selected_sheet}")
-                
-                # Creazione di una copia per la pulizia dei dati del grafico
                 df_plot = df.copy()
-                
-                # Pulizia della colonna delle percentuali (rimozione del simbolo % e conversione in numero)
-                df_plot[col_percentuali] = df_plot[col_percentuali].astype(str).str.replace('%', '', regex=False)
-                df_plot[col_percentuali] = pd.to_numeric(df_plot[col_percentuali], errors='coerce')
-                
-                # Rimuove le righe dove la percentuale o il nome del progetto sono assenti
-                df_plot = df_plot.dropna(subset=[col_percentuali, col_progetti])
-                
-                # Filtra eventuali righe in cui il nome del progetto è vuoto o composto solo da spazi
+                df_plot = df_plot.dropna(subset=[col_progetti])
                 df_plot = df_plot[df_plot[col_progetti].astype(str).str.strip() != ""]
                 
-                # Ordina i progetti dal completamento minore al maggiore per una visualizzazione a barre orizzontali ideale
-                df_plot = df_plot.sort_values(by=col_percentuali, ascending=True)
+                # --- MODALITÀ 1: GRAFICO SINGOLO CLASSICO ---
+                if tipo_grafico == "Singolo Valore (Stile Classico)":
+                    default_index = 1
+                    for i, col in enumerate(colonne):
+                        if '%' in col.lower() or 'completamento' in col.lower() or 'sal' in col.lower():
+                            default_index = i
+                            break
+                    
+                    col_percentuali = st.sidebar.selectbox("Colonna Valore da mostrare:", colonne, index=default_index)
+                    st.subheader(f"📈 Grafico Avanzamento Interattivo: {selected_sheet}")
+                    
+                    # Pulizia dato singolo
+                    df_plot[col_percentuali] = df_plot[col_percentuali].astype(str).str.replace('%', '', regex=False)
+                    df_plot[col_percentuali] = pd.to_numeric(df_plot[col_percentuali], errors='coerce')
+                    df_plot = df_plot.dropna(subset=[col_percentuali])
+                    df_plot = df_plot.sort_values(by=col_percentuali, ascending=True)
+                    
+                    if not df_plot.empty:
+                        suffix = "%" if ("%" in col_percentuali.lower() or "completamento" in col_percentuali.lower()) else ""
+                        fig = px.bar(
+                            df_plot, 
+                            x=col_percentuali, 
+                            y=col_progetti, 
+                            orientation='h',
+                            text=df_plot[col_percentuali].apply(lambda x: f"{x:.1f}{suffix}" if pd.notnull(x) else ""),
+                            color=col_percentuali,
+                            color_continuous_scale=px.colors.sequential.Viridis,
+                            labels={col_percentuali: col_percentuali, col_progetti: "Progetto"}
+                        )
+                        fig.update_layout(
+                            height=max(400, len(df_plot) * 35),
+                            margin=dict(l=150, r=40, t=40, b=40),
+                            hovermode="y unified"
+                        )
+                        if suffix == "%":
+                            fig.update_xaxes(ticksuffix="%")
+                        fig.update_yaxes(categoryorder='total ascending')
+                        fig.update_traces(textposition='outside', marker_line_color='rgb(8,48,107)', marker_line_width=1.5, opacity=0.9)
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.warning("Nessun dato numerico valido per generare il grafico singolo.")
                 
-                if not df_plot.empty:
-                    # Generazione del grafico a barre orizzontali interattivo
-                    fig = px.bar(
-                        df_plot, 
-                        x=col_percentuali, 
-                        y=col_progetti, 
-                        orientation='h',
-                        text=df_plot[col_percentuali].apply(lambda x: f"{x:.1f}%" if pd.notnull(x) else ""),
-                        color=col_percentuali,
-                        color_continuous_scale=px.colors.sequential.Viridis,
-                        labels={col_percentuali: "Stato Avanzamento Lavori (SAL)", col_progetti: "Progetto"}
-                    )
-                    
-                    # Configurazione layout ed assi senza conflitti
-                    fig.update_layout(
-                        height=max(400, len(df_plot) * 35), # Altezza dinamica in base al numero di progetti
-                        margin=dict(l=150, r=40, t=40, b=40),
-                        hovermode="y unified"
-                    )
-                    fig.update_xaxes(ticksuffix="%")
-                    fig.update_yaxes(categoryorder='total ascending')
-                    fig.update_traces(textposition='outside', marker_line_color='rgb(8,48,107)', marker_line_width=1.5, opacity=0.9)
-                    
-                    st.plotly_chart(fig, use_container_width=True)
+                # --- MODALITÀ 2: GRAFICO DOPPIO RAGGRUPPATO ---
                 else:
-                    st.warning("Nessun dato numerico valido trovato nelle colonne selezionate per generare il grafico.")
+                    default_selezionati = []
+                    for col in colonne:
+                        if 'fatto' in col.lower() or 'da fare' in col.lower():
+                            default_selezionati.append(col)
+                    
+                    col_valori = st.sidebar.multiselect(
+                        "Seleziona le colonne da confrontare:", 
+                        colonne, 
+                        default=default_selezionati if default_selezionati else [colonne[1]]
+                    )
+                    
+                    if col_valori:
+                        st.subheader(f"📈 Grafico di Confronto Interattivo: {selected_sheet}")
+                        
+                        for col in col_valori:
+                            df_plot[col] = df_plot[col].astype(str).str.replace('%', '', regex=False)
+                            df_plot[col] = pd.to_numeric(df_plot[col], errors='coerce')
+                        
+                        if not df_plot.empty:
+                            fig = px.bar(
+                                df_plot, 
+                                x=col_valori, 
+                                y=col_progetti, 
+                                orientation='h',
+                                barmode='group',
+                                color_discrete_sequence=px.colors.qualitative.Pastel,
+                                labels={col_progetti: "Attività / Progetto", "value": "Valore", "variable": "Metrica"}
+                            )
+                            fig.update_layout(
+                                height=max(450, len(df_plot) * 45),
+                                margin=dict(l=150, r=40, t=40, b=40),
+                                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                                hovermode="y unified"
+                        )
+                            fig.update_yaxes(categoryorder='total ascending')
+                            fig.update_traces(textposition='outside', marker_line_width=1, opacity=0.9)
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            st.warning("Nessun dato numerico valido per il grafico di confronto.")
+                    else:
+                        st.info("💡 Seleziona almeno una colonna nel menu multiselect per vedere il grafico raggruppato.")
             else:
                 st.warning("La struttura di questo foglio non contiene abbastanza colonne per generare il grafico automaticamente.")
                 
