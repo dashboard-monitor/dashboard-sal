@@ -87,7 +87,7 @@ if check_password():
             
             fig.update_layout(
                 height=600,
-                xaxis_suffix="%",
+                ticksuffix="%",
                 yaxis={'categoryorder':'total ascending'},
                 margin=dict(l=150, r=20, t=40, b=40),
                 hovermode="y unified"
