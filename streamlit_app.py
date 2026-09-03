@@ -29,26 +29,22 @@ if check_password():
     st.subheader("Monitoraggio SAL Progetti Minipia - Sincronizzato Live con Drive")
 
     try:
-        # ID univoco ed esatto del tuo Foglio Google
+        # ID univoco ed esatto del tuo Foglio Google estratto dallo screenshot
         SHEET_ID = "12gik-EYKeVeJvOpohkPM-nUVJLbiDkKpI-XT9Mx2RAA"
         
-        # Link di esportazione nativa ripristinato
-        url_diretto = f"https://google.com{SHEET_ID}/export?format=xlsx"
+        # Link di esportazione nativa che forza Google a inviare un file Excel (.xlsx) reale in background
+        url_diretto = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
         
-        # Lettura iniziale della struttura dei fogli dal cloud
+        # Lettura iniziale della struttura dei fogli di lavoro dal cloud
         excel_file = pd.ExcelFile(url_diretto, engine='openpyxl')
         sheet_names = excel_file.sheet_names
         
-        # Navigazione dei fogli nella barra laterale sinistra
+        # Navigazione dei fogli nella barra laterale sinistra (GANTT_SAL_PROGETTI_EPAL, ecc.)
         st.sidebar.header("📁 Navigazione Fogli")
         selected_sheet = st.sidebar.selectbox("Seleziona il foglio da visualizzare", sheet_names)
         
-        # SBLOCCO RETE: Usiamo st.cache_data per forzare Streamlit a non usare sessioni DNS vecchie e bloccate
-        @st.cache_data(ttl=0)
-        def load_data(url, sheet):
-            return pd.read_excel(url, sheet_name=sheet, engine='openpyxl')
-            
-        df = load_data(url_diretto, selected_sheet)
+        # Legge i dati in tempo reale dal foglio selezionato usando pandas
+        df = pd.read_excel(url_diretto, sheet_name=selected_sheet, engine='openpyxl')
         
         # Pulizia delle intestazioni di colonna e rimozione righe vuote
         df.columns = [str(c).strip() for c in df.columns]
@@ -117,19 +113,16 @@ if check_password():
                 df_plot = df_plot.sort_values(by=col_percentuali, ascending=True)
                 
                 if not df_plot.empty:
-                    is_percentage_col = "%" in col_percentuali.lower() or "completamento" in col_percentuali.lower() or "sal" in col_percentuali.lower()
-                    
+                    suffix = "%" if ("%" in col_percentuali.lower() or "completamento" in col_percentuali.lower() or "sal" in col_percentuali.lower()) else ""
                     fig = px.bar(
                         df_plot, x=col_percentuali, y=col_progetti, orientation='h',
-                        text_auto='.0%' if is_percentage_col else True,
+                        text=df_plot[col_percentuali].apply(lambda x: f"{x:.1f}{suffix}" if pd.notnull(x) else ""),
                         color=col_percentuali, color_continuous_scale=px.colors.sequential.Viridis,
                         labels={col_percentuali: col_percentuali, col_progetti: "Progetto"}
                     )
                     fig.update_layout(height=max(400, len(df_plot) * 35), margin=dict(l=150, r=40, t=40, b=40), hovermode="y unified")
-                    
-                    if is_percentage_col:
-                        fig.update_xaxes(tickformat='.0%')
-                        
+                    if suffix == "%":
+                        fig.update_xaxes(ticksuffix="%")
                     fig.update_yaxes(categoryorder='total ascending')
                     fig.update_traces(textposition='outside', marker_line_color='rgb(8,48,107)', marker_line_width=1.5, opacity=0.9)
                     st.plotly_chart(fig, use_container_width=True)
