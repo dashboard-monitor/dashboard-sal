@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import urllib.request
+import io
 
 # Configurazione della pagina per grafica estesa
 st.set_page_config(page_title="Dashboard Monitoraggio SAL", layout="wide")
@@ -32,11 +34,17 @@ if check_password():
         # Recupera l'ID corto e protetto dalla cassaforte di Streamlit
         SHEET_ID = st.secrets["GOOGLE_SHEET_ID"].strip()
         
-        # Ricostruisce l'indirizzo di download diretto in background in modo sicuro
+        # Costruisce l'URL di download diretto
         url_diretto = f"https://google.com{SHEET_ID}/export?format=xlsx"
 
-        # Lettura dei fogli di lavoro dal cloud
-        excel_file = pd.ExcelFile(url_diretto, engine='openpyxl')
+        # Scarica il file in memoria usando urllib per superare i blocchi del server cloud
+        req = urllib.request.Request(url_diretto, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as response:
+            file_data = response.read()
+        
+        # Converte i dati scaricati in un oggetto leggibile da pandas
+        excel_buffer = io.BytesIO(file_data)
+        excel_file = pd.ExcelFile(excel_buffer, engine='openpyxl')
         sheet_names = excel_file.sheet_names
         
         # Navigazione dei fogli nella barra laterale
@@ -44,7 +52,7 @@ if check_password():
         selected_sheet = st.sidebar.selectbox("Seleziona il foglio da visualizzare", sheet_names)
         
         # Lettura del foglio specifico selezionato dall'utente
-        df = pd.read_excel(url_diretto, sheet_name=selected_sheet, engine='openpyxl')
+        df = pd.read_excel(excel_buffer, sheet_name=selected_sheet, engine='openpyxl')
         
         # Pulizia intestazioni e righe vuote
         df.columns = [str(c).strip() for c in df.columns]
@@ -58,8 +66,8 @@ if check_password():
         
         colonne = df.columns.tolist()
         if len(colonne) >= 2:
-            col_progetti = colonne     
-            col_percentuali = colonne  
+            col_progetti = colonne[0]     
+            col_percentuali = colonne[1]  
             
             # Converte le stringhe percentuali in numeri decimali puliti
             df[col_percentuali] = pd.to_numeric(df[col_percentuali].astype(str).str.replace('%', ''), errors='coerce')
