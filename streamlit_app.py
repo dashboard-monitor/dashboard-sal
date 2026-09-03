@@ -18,7 +18,7 @@ def check_password():
     password = st.text_input("Inserisci la password del team:", type="password")
     if st.button("Accedi"):
         # MODIFICA LA PASSWORD QUI SOTTO: CAMBIA Azienda2026! CON QUELLA CHE VUOI TU
-        if password == "Innov_TEAM_2026!": 
+        if password == "PASSWORD_TEAM": 
             st.session_state["password_correct"] = True
             st.rerun()
         else:
