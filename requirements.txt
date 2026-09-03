@@ -1,3 +1,4 @@
 pandas
 plotly
 openpyxl
+st-gsheets-connection
