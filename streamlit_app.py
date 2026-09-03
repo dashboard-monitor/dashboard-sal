@@ -34,19 +34,18 @@ if check_password():
         LINK_ORIGINALE = st.secrets["LINK_GOOGLE_DRIVE"]
 
         # Trasforma l'URL web del foglio in un link di esportazione diretta in formato Excel (XLSX)
-        # Estrae l'ID univoco del foglio compreso tra '/d/' e '/edit'
         match = re.search(r'/d/([^/]+)', LINK_ORIGINALE)
         if match:
             spreadsheet_id = match.group(1)
-            url_diretto = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=xlsx"
+            url_diretto = f"https://google.com{spreadsheet_id}/export?format=xlsx"
         else:
             url_diretto = LINK_ORIGINALE
 
-        # Lettura dei fogli di lavoro dal cloud (carica in memoria openpyxl)
+        # Lettura dei fogli di lavoro dal cloud
         excel_file = pd.ExcelFile(url_diretto, engine='openpyxl')
         sheet_names = excel_file.sheet_names
         
-        # Navigazione dei fogli nella barra laterale (GANTT_SAL_PROGETTI_EPAL, ecc.)
+        # Navigazione dei fogli nella barra laterale
         st.sidebar.header("Navigazione Fogli")
         selected_sheet = st.sidebar.selectbox("Seleziona il foglio da visualizzare", sheet_names)
         
@@ -85,13 +84,16 @@ if check_password():
                 labels={col_percentuali: "Stato Avanzamento Lavori (SAL)", col_progetti: "Progetto"}
             )
             
+            # Configurazione layout generale
             fig.update_layout(
                 height=600,
-                ticksuffix="%",
-                yaxis={'categoryorder':'total ascending'},
                 margin=dict(l=150, r=20, t=40, b=40),
                 hovermode="y unified"
             )
+            
+            # Configurazione assi nativa senza conflitti
+            fig.update_xaxes(ticksuffix="%")
+            fig.update_yaxes(categoryorder='total ascending')
             fig.update_traces(textposition='outside', marker_line_color='rgb(8,48,107)', marker_line_width=1.5, opacity=0.9)
             
             st.plotly_chart(fig, use_container_width=True)
@@ -99,4 +101,4 @@ if check_password():
             st.warning("La struttura di questo foglio non contiene abbastanza colonne per generare il grafico automaticamente.")
             
     except Exception as e:
-        st.error(f"Errore di sincronizzazione Cloud: verifica che il link nei Secrets sia corretto e impostato su 'Chiunque abbia il link'. Dettaglio: {e}")
+        st.error(f"Errore di sincronizzazione Cloud: verifica i tuoi Secrets. Dettaglio: {e}")
