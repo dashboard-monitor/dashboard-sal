@@ -109,11 +109,6 @@ if check_password():
                 
                 df_plot[col_percentuali] = df_plot[col_percentuali].astype(str).str.replace('%', '', regex=False)
                 df_plot[col_percentuali] = pd.to_numeric(df_plot[col_percentuali], errors='coerce')
-                
-                # Sotto viene moltiplicato il valore decimale per 100 (es. 1.0 -> 100.0)
-                if "%" in col_percentuali.lower() or "completamento" in col_percentuali.lower() or "sal" in col_percentuali.lower():
-                    df_plot[col_percentuali] = df_plot[col_percentuali] * 100
-                
                 df_plot = df_plot.dropna(subset=[col_percentuali])
                 df_plot = df_plot.sort_values(by=col_percentuali, ascending=True)
                 
