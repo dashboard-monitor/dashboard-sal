@@ -32,19 +32,15 @@ if check_password():
         # ID univoco ed esatto del tuo Foglio Google
         SHEET_ID = "12gik-EYKeVeJvOpohkPM-nUVJLbiDkKpI-XT9Mx2RAA"
         
-        # Link in formato CSV esportabile, estremamente leggero e nativamente digerito da Pandas senza blocchi DNS
+        # RISOLUZIONE DEFINITIVA: Forziamo la lettura in CSV per evitare totalmente l'errore urlopen/DNS
         url_csv = f"https://google.com{SHEET_ID}/gviz/tq?tqx=out:csv"
-        
-        # Lettura sicura dei dati
         df = pd.read_csv(url_csv)
-        sheet_names = ["Foglio Monitoraggio SAL"]
-        selected_sheet = sheet_names[0]
         
         # Pulizia delle intestazioni di colonna e rimozione righe vuote
         df.columns = [str(c).strip() for c in df.columns]
         df = df.dropna(how='all')
         
-        st.write(f"### 📋 Dati attuali della dashboard")
+        st.write("### 📋 Dati attuali della dashboard")
         st.dataframe(df, use_container_width=True)
         
         st.markdown("---")
