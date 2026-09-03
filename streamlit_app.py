@@ -32,13 +32,13 @@ if check_password():
         # ID univoco del tuo Foglio Google
         SHEET_ID = "12gik-EYKeVeJvOpohkPM-nUVJLbiDkKpI-XT9Mx2RAA"
         
-        # Connessione nativa e sicura a Google Sheets (evita gli errori Name or service not known)
-        conn = st.connection("gsheets", type=st.CONNECTION_CLASS)
+        # Connessione nativa e sicura a Google Sheets (Sintassi ultra-compatibile)
+        conn = st.experimental_connection("gsheets", type="spreadsheet")
         
         # URL pubblico del foglio per l'estrazione dei nomi dei fogli
         url_diretto = f"https://google.com{SHEET_ID}/export?format=xlsx"
         
-        # Lettura iniziale della struttura dei fogli dal cloud usando la connessione sicura
+        # Lettura iniziale della struttura dei fogli dal cloud
         excel_file = pd.ExcelFile(url_diretto, engine='openpyxl')
         sheet_names = excel_file.sheet_names
         
