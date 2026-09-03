@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from streamlit_gsheets import GSheetsConnection
 
 # Configurazione della pagina per grafica estesa
 st.set_page_config(page_title="Dashboard Monitoraggio SAL", layout="wide")
@@ -30,17 +29,10 @@ if check_password():
     st.subheader("Monitoraggio SAL Progetti Minipia - Sincronizzato Live con Drive")
 
     try:
-        # Inizializza la connessione nativa protetta usando la chiave [connections.gsheets] dei Secrets
-        conn = st.connection("gsheets", type=GSheetsConnection)
+        # Il link ridotto inserito direttamente nel codice sorgente in modo lineare e privo di interruzioni
+        url_diretto = "https://google.com"
         
-        # Recupera l'URL memorizzato automaticamente dalla chiave spreadsheet nei Secrets
-        url_foglio = st.secrets["connections.gsheets"]["spreadsheet"]
-        
-        # Forza la pulizia dell'URL per estrarre la struttura in background
-        base_url = url_foglio.split('/edit')[0]
-        url_diretto = f"{base_url}/export?format=xlsx"
-        
-        # Lettura iniziale della struttura dei fogli di lavoro dal cloud
+        # Lettura iniziale della struttura dei fogli di lavoro dal cloud (carica in memoria openpyxl)
         excel_file = pd.ExcelFile(url_diretto, engine='openpyxl')
         sheet_names = excel_file.sheet_names
         
@@ -48,8 +40,8 @@ if check_password():
         st.sidebar.header("📁 Navigazione Fogli")
         selected_sheet = st.sidebar.selectbox("Seleziona il foglio da visualizzare", sheet_names)
         
-        # Legge i dati in tempo reale dal foglio selezionato senza bisogno di upload manuali
-        df = conn.read(sheet_name=selected_sheet, ttl=5) # Cache minima per avere dati live ad ogni refresh
+        # Legge i dati in tempo reale dal foglio selezionato usando pandas
+        df = pd.read_excel(url_diretto, sheet_name=selected_sheet, engine='openpyxl')
         
         # Pulizia delle intestazioni di colonna e rimozione righe vuote
         df.columns = [str(c).strip() for c in df.columns]
