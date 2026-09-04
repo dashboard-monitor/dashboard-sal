@@ -1,6 +1,7 @@
 import re
 import unicodedata
 from datetime import datetime
+from difflib import SequenceMatcher
 from io import BytesIO
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
@@ -911,13 +912,7 @@ def trova_colonne_giorni_sal(
         nome_foglio
     )
 
-    if (
-        tipo in {
-            "EPAL",
-            "MGIO"
-        }
-        and len(df.columns) >= 9
-    ):
+    if len(df.columns) >= 9:
 
         candidato_fatto = (
             col_fatto
@@ -1105,12 +1100,12 @@ def calcola_giorni_progetto(
 
         return {
             **risultato_vuoto,
-            "giorni_fatti":
-                tot_fatto,
-            "giorni_da_fare":
-                tot_da_fare,
-            "giorni_totali":
-                totale,
+            "disponibile": True,
+            "giorni_fatti": tot_fatto,
+            "giorni_da_fare": tot_da_fare,
+            "giorni_totali": totale,
+            "pct_fatti": 0.0,
+            "pct_da_fare": 0.0,
         }
 
     pct_fatti = (
@@ -1793,16 +1788,6 @@ def costruisci_portafoglio_combinato(
 # ============================================================
 
 def consolida_progetti_univoci(df):
-    """
-    Una sola riga per ciascun progetto MiniPIA distinto.
-
-    REGOLA STATO:
-    se almeno una riga sorgente del progetto riporta
-    uno stato equivalente a COMPLETO, lo stato
-    consolidato è COMpletato.
-
-    Lo stato sorgente prevale quindi sul SAL numerico.
-    """
 
     if (
         df is None
@@ -1842,10 +1827,6 @@ def consolida_progetti_univoci(df):
 
         gruppo = gruppo.copy()
 
-        # ----------------------------------------------------
-        # NOME PROGETTO
-        # ----------------------------------------------------
-
         nomi_validi = [
             str(x).strip()
             for x
@@ -1862,10 +1843,6 @@ def consolida_progetti_univoci(df):
             else chiave
         )
 
-        # ----------------------------------------------------
-        # TEAM
-        # ----------------------------------------------------
-
         teams = {
             str(x).strip()
             for x
@@ -1878,10 +1855,6 @@ def consolida_progetti_univoci(df):
         team = team_da_insieme(
             teams
         )
-
-        # ----------------------------------------------------
-        # GIORNI
-        # ----------------------------------------------------
 
         fatto_series = (
             pd.to_numeric(
@@ -1946,20 +1919,6 @@ def consolida_progetti_univoci(df):
             da_fare = float("nan")
             totale_giorni = float("nan")
 
-        # ----------------------------------------------------
-        # SAL SORGENTE
-        # ----------------------------------------------------
-        #
-        # Se esiste una sola riga, il dato sorgente
-        # viene mantenuto esattamente.
-        #
-        # Se esistono più righe per lo stesso progetto,
-        # viene utilizzata la media dei SAL sorgente.
-        #
-        # Questo evita che eventuali valori anomali
-        # come 113,32% vengano nascosti.
-        # ----------------------------------------------------
-
         sal_values = (
             pd.to_numeric(
                 gruppo[
@@ -2021,10 +1980,6 @@ def consolida_progetti_univoci(df):
                     "nan"
                 )
 
-        # ----------------------------------------------------
-        # SAL VISUALIZZATO
-        # ----------------------------------------------------
-
         if pd.notna(
             sal_sorgente
         ):
@@ -2044,10 +1999,6 @@ def consolida_progetti_univoci(df):
             sal = float(
                 "nan"
             )
-
-        # ----------------------------------------------------
-        # ANOMALIA SAL
-        # ----------------------------------------------------
 
         anomalie_originali = False
 
@@ -2079,10 +2030,6 @@ def consolida_progetti_univoci(df):
                 )
             )
         )
-
-        # ----------------------------------------------------
-        # STATO SORGENTE
-        # ----------------------------------------------------
 
         stati_sorgente = []
 
@@ -2118,19 +2065,6 @@ def consolida_progetti_univoci(df):
             )
         )
 
-        # ----------------------------------------------------
-        # STATO CONSOLIDATO
-        # ----------------------------------------------------
-        #
-        # REGOLA DEFINITIVA:
-        #
-        # lo STATO sorgente del GANTT prevale
-        # sul valore percentuale del SAL.
-        #
-        # Se almeno uno stato sorgente indica
-        # COMPLETO, il progetto è Completato.
-        # ----------------------------------------------------
-
         completo_da_sorgente = any(
             stato_sorgente_e_completo(
                 value
@@ -2150,10 +2084,6 @@ def consolida_progetti_univoci(df):
             stato = stato_da_sal(
                 sal
             )
-
-        # ----------------------------------------------------
-        # SAL ATTESO
-        # ----------------------------------------------------
 
         sal_atteso = float(
             "nan"
@@ -2199,10 +2129,6 @@ def consolida_progetti_univoci(df):
                 "nan"
             )
 
-        # ----------------------------------------------------
-        # FOGLI ORIGINE
-        # ----------------------------------------------------
-
         fogli_origine = []
 
         if (
@@ -2230,10 +2156,6 @@ def consolida_progetti_univoci(df):
                     fogli_origine.append(
                         text
                     )
-
-        # ----------------------------------------------------
-        # OUTPUT
-        # ----------------------------------------------------
 
         righe.append(
             {
@@ -2596,49 +2518,113 @@ def score_match_foglio(
     )
 
 
+def opport_ricerca_foglio(progetto, filtro_team, sheet_names):
+    candidati = []
+    for nome in sheet_names:
+        if nome in TEMPLATE_SAL:
+            continue
+        norm_nome = normalizza_testo(nome)
+        if not norm_nome.startswith("sal"):
+            continue
+        if "gantt" in norm_nome:
+            continue
+
+        tipo = tipo_sal_da_nome(nome)
+        if filtro_team is not None:
+            if tipo in {filtro_team, "EPAL+MGIO", None}:
+                candidati.append(nome)
+        else:
+            candidati.append(nome)
+
+    if not candidati:
+        return None, 0.0
+
+    scores = [(nome, score_match_foglio(progetto, nome, filtro_team)) for nome in candidati]
+    scores.sort(key=lambda x: x[1], reverse=True)
+    return scores[0]
+
+
 def trova_foglio_sal_migliore(
     progetto,
     team,
     sheet_names,
 ):
 
-    candidati = lista_fogli_sal(
-        sheet_names,
-        team
-    )
+    foglio, score = opport_ricerca_foglio(progetto, team, sheet_names)
+    if not foglio:
+        foglio, score = opport_ricerca_foglio(progetto, None, sheet_names)
 
-    if not candidati:
+    return foglio, score
 
-        candidati = lista_fogli_sal(
-            sheet_names,
-            None
-        )
 
-    if not candidati:
+def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names):
+    team_norm = normalizza_team(team)
 
-        return (
-            None,
-            0.0
-        )
+    if team_norm == "EPAL+MGIO":
+        foglio_epal, s_epal = opport_ricerca_foglio(progetto, "EPAL", sheet_names)
+        foglio_mgio, s_mgio = opport_ricerca_foglio(progetto, "MGIO", sheet_names)
 
-    scores = [
-        (
-            nome,
-            score_match_foglio(
-                progetto,
-                nome,
-                team,
-            )
-        )
-        for nome in candidati
-    ]
+        res_epal = calcola_giorni_progetto(fogli[foglio_epal], foglio_epal) if foglio_epal and foglio_epal in fogli else {"disponibile": False}
+        res_mgio = calcola_giorni_progetto(fogli[foglio_mgio], foglio_mgio) if foglio_mgio and foglio_mgio in fogli else {"disponibile": False}
 
-    scores.sort(
-        key=lambda x: x[1],
-        reverse=True
-    )
+        if foglio_epal and foglio_mgio and foglio_epal != foglio_mgio and res_epal["disponibile"] and res_mgio["disponibile"]:
+            fatto_tot = res_epal["giorni_fatti"] + res_mgio["giorni_fatti"]
+            da_fare_tot = res_epal["giorni_da_fare"] + res_mgio["giorni_da_fare"]
+            return fatto_tot, da_fare_tot
 
-    return scores[0]
+        if res_epal["disponibile"] and not res_mgio["disponibile"]:
+            return res_epal["giorni_fatti"], res_epal["giorni_da_fare"]
+
+        if res_mgio["disponibile"] and not res_epal["disponibile"]:
+            return res_mgio["giorni_fatti"], res_mgio["giorni_da_fare"]
+
+        foglio_comb, _ = opport_ricerca_foglio(progetto, None, sheet_names)
+        if foglio_comb and foglio_comb in fogli:
+            res_comb = calcola_giorni_progetto(fogli[foglio_comb], foglio_comb)
+            if res_comb["disponibile"]:
+                return res_comb["giorni_fatti"], res_comb["giorni_da_fare"]
+
+        return float("nan"), float("nan")
+
+    else:
+        foglio_single, _ = opport_ricerca_foglio(progetto, team_norm, sheet_names)
+        if not foglio_single:
+            foglio_single, _ = opport_ricerca_foglio(progetto, None, sheet_names)
+
+        if foglio_single and foglio_single in fogli:
+            res = calcola_giorni_progetto(fogli[foglio_single], foglio_single)
+            if res["disponibile"]:
+                return res["giorni_fatti"], res["giorni_da_fare"]
+
+        return float("nan"), float("nan")
+
+
+def arricchisci_portafoglio_con_giorni_sal(df, fogli, sheet_names):
+    if df is None or df.empty:
+        return df
+
+    out = df.copy()
+
+    for idx in out.index:
+        progetto = out.at[idx, "Progetto"]
+        team = out.at[idx, "Team"] if "Team" in out.columns else "N/D"
+
+        fatto, da_fare = calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names)
+
+        if pd.notna(fatto) and pd.notna(da_fare):
+            out.at[idx, "Fatto"] = fatto
+            out.at[idx, "Da fare"] = da_fare
+        else:
+            orig_f = df.at[idx, "Fatto"] if "Fatto" in df.columns else float("nan")
+            orig_df = df.at[idx, "Da fare"] if "Da fare" in df.columns else float("nan")
+            if pd.notna(orig_f) and pd.notna(orig_df):
+                out.at[idx, "Fatto"] = orig_f
+                out.at[idx, "Da fare"] = orig_df
+            else:
+                out.at[idx, "Fatto"] = float("nan")
+                out.at[idx, "Da fare"] = float("nan")
+
+    return out
 
 
 # ============================================================
@@ -3628,6 +3614,9 @@ def tabella_portafoglio(df):
         colonne
     ].copy()
 
+    tabella["Fatto"] = tabella["Fatto"].apply(formatta_numero)
+    tabella["Da fare"] = tabella["Da fare"].apply(formatta_numero)
+
     configurazione = {
 
         "SAL":
@@ -3644,15 +3633,13 @@ def tabella_portafoglio(df):
             ),
 
         "Fatto":
-            st.column_config.NumberColumn(
-                "Giorni fatti",
-                format="%.1f",
+            st.column_config.TextColumn(
+                "Giorni fatti"
             ),
 
         "Da fare":
-            st.column_config.NumberColumn(
-                "Giorni da fare",
-                format="%.1f",
+            st.column_config.TextColumn(
+                "Giorni da fare"
             ),
     }
 
@@ -3759,7 +3746,7 @@ with header_right:
 
 
 # ============================================================
-# CARICAMENTO DATI
+# CARICAMENTO GOOGLE SHEETS
 # ============================================================
 
 try:
@@ -3884,6 +3871,28 @@ else:
 
 
 # ============================================================
+# ARRICCHIMENTO EPAL E MGIO CON I GIORNI DEI SAL
+# ============================================================
+
+portfolio_epal = (
+    arricchisci_portafoglio_con_giorni_sal(
+        portfolio_epal,
+        fogli,
+        sheet_names,
+    )
+)
+
+
+portfolio_mgio = (
+    arricchisci_portafoglio_con_giorni_sal(
+        portfolio_mgio,
+        fogli,
+        sheet_names,
+    )
+)
+
+
+# ============================================================
 # FALLBACK EPAL + MGIO
 # ============================================================
 
@@ -3923,9 +3932,6 @@ else:
 # ============================================================
 # PORTAFOGLIO TUTTI - EPAL+MGIO
 # ============================================================
-#
-# Una sola riga per ogni progetto MiniPIA distinto.
-# ============================================================
 
 if not portfolio_da_gantt_combinato.empty:
 
@@ -3954,6 +3960,15 @@ portfolio_tutti = (
         portfolio_tutti,
         portfolio_epal,
         portfolio_mgio,
+    )
+)
+
+
+portfolio_tutti = (
+    arricchisci_portafoglio_con_giorni_sal(
+        portfolio_tutti,
+        fogli,
+        sheet_names,
     )
 )
 
@@ -4545,17 +4560,22 @@ if vista == "Executive":
             "Priorità operative"
         )
 
+        priorita_tabella = priorita[
+            [
+                "Progetto",
+                "Team",
+                "SAL",
+                "Stato",
+                "Fatto",
+                "Da fare",
+            ]
+        ].copy()
+
+        priorita_tabella["Fatto"] = priorita_tabella["Fatto"].apply(formatta_numero)
+        priorita_tabella["Da fare"] = priorita_tabella["Da fare"].apply(formatta_numero)
 
         st.dataframe(
-            priorita[
-                [
-                    "Progetto",
-                    "Team",
-                    "SAL",
-                    "Stato",
-                    "Da fare",
-                ]
-            ],
+            priorita_tabella,
             use_container_width=True,
             hide_index=True,
             column_config={
@@ -4568,10 +4588,14 @@ if vista == "Executive":
                         format="%.1f%%",
                     ),
 
+                "Fatto":
+                    st.column_config.TextColumn(
+                        "Giorni fatti",
+                    ),
+
                 "Da fare":
-                    st.column_config.NumberColumn(
+                    st.column_config.TextColumn(
                         "Giorni da fare",
-                        format="%.1f",
                     ),
             },
         )
