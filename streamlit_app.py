@@ -11,7 +11,7 @@ import streamlit as st
 
 
 # ============================================================
-# CONFIGURAZIONE
+# CONFIGURAZIONE GENERALE
 # ============================================================
 
 st.set_page_config(
@@ -25,27 +25,38 @@ SHEET_ID = "12gik-EYKeVeJvOpohkPM-nUVJLbiDkKpI-XT9Mx2RAA"
 
 GANTT_EPAL = "GANTT_SAL_PROGETTI_EPAL"
 GANTT_MGIO = "GANTT_SAL_PROGETTI_MGIO"
-GANTT_COMBINATO = "GANTT_SAL_PROGETTI_EPAL+MGIO"
+
+GANTT_COMBINATI_POSSIBILI = [
+    "GANTT_SAL_PROGETTI_EPAL+MGIO",
+    "GANTT_SAL_PROGETTI_MGIO+EPAL",
+]
 
 TEMPLATE_SAL = {
     "SAL_ANAL_PRED (EPAL)",
     "SAL_ANAL_PRED (MGIO)",
     "SAL_ANAL_PRED (EPAL+MGIO)",
+    "SAL_ANAL_PRED (MGIO+EPAL)",
 }
 
-# Cache dei dati Google Sheets.
-# 300 secondi = 5 minuti.
 CACHE_TTL_SECONDS = 300
 
-# Soglie semaforiche.
 SOGLIA_ROSSO = 33.33
 SOGLIA_GIALLO = 66.67
+
+# Tolleranza ammessa tra SAL GANTT e SAL calcolato sui giorni.
+TOLLERANZA_COHERENZA_SAL = 1.0
 
 COLORI_STATO = {
     "Critico": "#D62728",
     "In avanzamento": "#F2C94C",
     "Avanzato": "#2CA02C",
     "Completato": "#167D3E",
+    "N/D": "#A0A0A0",
+}
+
+COLORI_RIPARTIZIONE = {
+    "Fatto": "#2E7D32",
+    "Da fare": "#D9DDE3",
 }
 
 PLOTLY_CONFIG = {
@@ -103,24 +114,19 @@ st.markdown(
 # ============================================================
 
 def ora_italiana():
-    """
-    Restituisce data e ora italiane.
-    """
 
     try:
+
         return datetime.now(
             ZoneInfo("Europe/Rome")
         )
 
     except Exception:
+
         return datetime.now()
 
 
 def normalizza_testo(value):
-    """
-    Normalizza un testo per confronti,
-    riconoscimento colonne e matching.
-    """
 
     if value is None:
         return ""
@@ -145,17 +151,28 @@ def normalizza_testo(value):
     return text
 
 
-def tokenizza(value):
-    """
-    Tokenizzazione utilizzata per associare
-    automaticamente un progetto al relativo foglio SAL.
-    """
+def chiave_progetto(value):
 
+    text = normalizza_testo(value)
+
+    # Elimina anche simboli come ✅ presenti nei nomi
+    # dei progetti completati.
     text = re.sub(
         r"[^a-z0-9]+",
         " ",
-        normalizza_testo(value)
+        text
     )
+
+    return re.sub(
+        r"\s+",
+        " ",
+        text
+    ).strip()
+
+
+def tokenizza(value):
+
+    text = chiave_progetto(value)
 
     stopwords = {
         "sal",
@@ -182,9 +199,6 @@ def tokenizza(value):
 
 
 def pulisci_dataframe(df):
-    """
-    Pulizia minima del DataFrame.
-    """
 
     df = df.copy()
 
@@ -193,19 +207,9 @@ def pulisci_dataframe(df):
         for c in df.columns
     ]
 
-    colonne_da_eliminare = [
-        col
-        for col in df.columns
-        if str(col)
-        .lower()
-        .startswith("unnamed")
-        and df[col].isna().all()
-    ]
-
-    if colonne_da_eliminare:
-        df = df.drop(
-            columns=colonne_da_eliminare
-        )
+    # Non vengono eliminate le colonne Unnamed.
+    # Sono utili per preservare le posizioni A-I
+    # dei fogli SAL individuali.
 
     df = df.dropna(
         how="all"
@@ -219,10 +223,6 @@ def pulisci_dataframe(df):
 # ============================================================
 
 def serie_numerica(serie):
-    """
-    Converte una serie in numerica,
-    gestendo punto, virgola e percentuale.
-    """
 
     def converti(value):
 
@@ -245,7 +245,7 @@ def serie_numerica(serie):
         if not text:
             return float("nan")
 
-        # Caso 1.234,56
+        # Gestione formato italiano 1.234,56
         if "," in text and "." in text:
 
             if text.rfind(",") > text.rfind("."):
@@ -276,9 +276,11 @@ def serie_numerica(serie):
         )
 
         try:
+
             return float(text)
 
         except ValueError:
+
             return float("nan")
 
     return serie.apply(
@@ -294,9 +296,7 @@ def serie_numerica(serie):
 
 def percentuale_da_excel(serie):
     """
-    Converte i valori percentuali in punti percentuali.
-
-    Esempi:
+    Converte correttamente:
 
     0.5993  -> 59.93
     0.8055  -> 80.55
@@ -304,19 +304,14 @@ def percentuale_da_excel(serie):
     1.0000  -> 100.00
     1.1332  -> 113.32
 
-    Se invece il dato è già:
+    ma lascia invariati valori già nella scala 0-100:
 
     59.93   -> 59.93
     "59,93%" -> 59.93
-
-    L'inferenza viene effettuata sull'intera serie.
-    Questo evita il problema per cui un singolo
-    valore superiore a 1 blocca la conversione
-    della colonna Excel.
     """
 
     valori = []
-    valori_gia_percentuali = []
+    gia_percentuali = []
 
     for value in serie:
 
@@ -326,7 +321,7 @@ def percentuale_da_excel(serie):
                 float("nan")
             )
 
-            valori_gia_percentuali.append(
+            gia_percentuali.append(
                 False
             )
 
@@ -337,29 +332,29 @@ def percentuale_da_excel(serie):
             and "%" in value
         ):
 
-            valore = serie_numerica(
+            numero = serie_numerica(
                 pd.Series([value])
             ).iloc[0]
 
             valori.append(
-                valore
+                numero
             )
 
-            valori_gia_percentuali.append(
+            gia_percentuali.append(
                 True
             )
 
         else:
 
-            valore = serie_numerica(
+            numero = serie_numerica(
                 pd.Series([value])
             ).iloc[0]
 
             valori.append(
-                valore
+                numero
             )
 
-            valori_gia_percentuali.append(
+            gia_percentuali.append(
                 False
             )
 
@@ -369,40 +364,40 @@ def percentuale_da_excel(serie):
         dtype="float64",
     )
 
-    mask_gia_percentuale = pd.Series(
-        valori_gia_percentuali,
+    mask_percentuale = pd.Series(
+        gia_percentuali,
         index=serie.index,
         dtype="bool",
     )
 
-    valori_da_inferire = risultato[
-        (~mask_gia_percentuale)
+    valori_inferenza = risultato[
+        (~mask_percentuale)
         & risultato.notna()
     ]
 
-    if not valori_da_inferire.empty:
+    if not valori_inferenza.empty:
 
         quota_frazioni = (
-            valori_da_inferire.abs()
+            valori_inferenza.abs()
             <= 1.5
         ).mean()
 
         mediana = (
-            valori_da_inferire
+            valori_inferenza
             .abs()
             .median()
         )
 
-        # Se la maggior parte della serie
-        # è nel formato Excel 0-1,
-        # moltiplica per 100.
+        # Se la maggioranza della colonna presenta
+        # il classico formato Excel 0-1,
+        # la colonna viene convertita in 0-100.
         if (
             quota_frazioni >= 0.60
             or mediana <= 1.5
         ):
 
             risultato.loc[
-                (~mask_gia_percentuale)
+                (~mask_percentuale)
                 & risultato.notna()
             ] *= 100
 
@@ -419,7 +414,7 @@ def formatta_percentuale(
 ):
 
     if pd.isna(value):
-        return "—"
+        return "N/D"
 
     return (
         f"{float(value):.{decimali}f}%"
@@ -433,7 +428,7 @@ def formatta_numero(
 ):
 
     if pd.isna(value):
-        return "—"
+        return "N/D"
 
     return (
         f"{float(value):.{decimali}f}"
@@ -442,17 +437,14 @@ def formatta_numero(
 
 
 # ============================================================
-# STATO SAL
+# CLASSIFICAZIONE SAL
 # ============================================================
 
 def stato_da_sal(value):
     """
-    Classificazione semaforica.
-
-    0 - 33,33%       = Critico
-    33,33 - 66,67%   = In avanzamento
-    66,67 - <100%    = Avanzato
-    100%             = Completato
+    Classificazione semaforica utilizzata
+    soltanto quando il progetto NON risulta
+    esplicitamente COMPLETO nel GANTT.
     """
 
     if pd.isna(value):
@@ -479,7 +471,7 @@ def stato_da_sal(value):
 
 
 # ============================================================
-# RICONOSCIMENTO AUTOMATICO DELLE COLONNE
+# RICONOSCIMENTO COLONNE
 # ============================================================
 
 def trova_colonna(
@@ -495,27 +487,27 @@ def trova_colonna(
     contains_any = contains_any or []
     exclude = exclude or []
 
-    nomi_normalizzati = {
+    nomi = {
         col: normalizza_testo(col)
         for col in df.columns
     }
 
-    # 1. Match esatto
+    # Match esatto
     for candidato in exact:
 
         candidato_norm = normalizza_testo(
             candidato
         )
 
-        for col, nome in nomi_normalizzati.items():
+        for col, nome in nomi.items():
 
             if nome == candidato_norm:
                 return col
 
-    # 2. Deve contenere tutti i termini
+    # Contiene tutti i termini
     if contains_all:
 
-        for col, nome in nomi_normalizzati.items():
+        for col, nome in nomi.items():
 
             if any(
                 normalizza_testo(x) in nome
@@ -529,10 +521,10 @@ def trova_colonna(
             ):
                 return col
 
-    # 3. Deve contenere almeno un termine
+    # Contiene almeno un termine
     if contains_any:
 
-        for col, nome in nomi_normalizzati.items():
+        for col, nome in nomi.items():
 
             if any(
                 normalizza_testo(x) in nome
@@ -555,6 +547,8 @@ def trova_colonna_progetto(df):
         df,
         exact=[
             "PROGETTO",
+            "PROGETTO EPAL",
+            "PROGETTO MGIO",
             "NOME PROGETTO",
             "CLIENTE",
             "COMMESSA",
@@ -678,6 +672,26 @@ def trova_colonna_sal(df):
     )
 
 
+def trova_colonna_stato(df):
+    """
+    Individua la colonna STATO ufficiale
+    presente nei GANTT EPAL / MGIO / combinato.
+    """
+
+    return trova_colonna(
+        df,
+        exact=[
+            "STATO",
+            "STATUS",
+            "STATO PROGETTO",
+        ],
+        contains_any=[
+            "stato",
+            "status",
+        ],
+    )
+
+
 def trova_colonna_fatto(df):
 
     col = trova_colonna(
@@ -687,6 +701,7 @@ def trova_colonna_fatto(df):
             "FATTO",
             "GIORNI FATTI",
             "GIORNI EFFETTUATI",
+            "GIORNI FATTO",
         ],
     )
 
@@ -711,6 +726,7 @@ def trova_colonna_da_fare(df):
             "DA FARE",
             "GIORNI DA FARE",
             "GIORNI RESIDUI",
+            "RESIDUO",
         ],
     )
 
@@ -728,11 +744,6 @@ def trova_colonna_da_fare(df):
 
 
 def trova_colonna_sal_atteso(df):
-    """
-    Il confronto SAL reale / atteso
-    viene attivato soltanto se nel sorgente
-    esiste realmente una colonna compatibile.
-    """
 
     return trova_colonna(
         df,
@@ -764,6 +775,390 @@ def trova_colonna_team(df):
             "owner",
         ],
     )
+
+
+# ============================================================
+# STATO UFFICIALE DEL PROGETTO
+# ============================================================
+
+def normalizza_stato_progetto(
+    stato_sorgente,
+    sal
+):
+    """
+    REGOLA CENTRALE:
+
+    1. Se il GANTT indica esplicitamente che
+       il progetto è COMPLETO, lo stato è
+       "Completato" indipendentemente dal SAL.
+
+       Esempio:
+       SAL 94% + STATO COMPLETO -> Completato
+
+    2. Se STATO è vuoto, la classificazione
+       viene ricavata dal SAL.
+    """
+
+    if stato_sorgente is not None:
+
+        stato = normalizza_testo(
+            stato_sorgente
+        )
+
+        stati_completati = {
+            "completo",
+            "completato",
+            "completed",
+            "chiuso",
+            "concluso",
+            "terminato",
+            "finito",
+        }
+
+        if (
+            stato in stati_completati
+            or stato.startswith("complet")
+        ):
+
+            return "Completato"
+
+    return stato_da_sal(
+        sal
+    )
+
+
+# ============================================================
+# TIPO SAL
+# ============================================================
+
+def tipo_sal_da_nome(nome):
+
+    nome_norm = (
+        normalizza_testo(nome)
+        .replace(" ", "")
+    )
+
+    if (
+        "(epal+mgio)" in nome_norm
+        or "(mgio+epal)" in nome_norm
+    ):
+        return "EPAL+MGIO"
+
+    if "(epal)" in nome_norm:
+        return "EPAL"
+
+    if "(mgio)" in nome_norm:
+        return "MGIO"
+
+    return None
+
+
+# ============================================================
+# COLONNE GIORNI DEI SAL
+# ============================================================
+
+def trova_colonne_giorni_sal(
+    df,
+    nome_foglio
+):
+    """
+    Cerca prima le intestazioni.
+
+    Nei SAL individuali EPAL/MGIO,
+    se necessario, usa H:I come fallback.
+    """
+
+    col_fatto = trova_colonna_fatto(
+        df
+    )
+
+    col_da_fare = trova_colonna_da_fare(
+        df
+    )
+
+    if (
+        col_fatto is not None
+        and col_da_fare is not None
+    ):
+
+        return (
+            col_fatto,
+            col_da_fare,
+            "intestazioni del foglio SAL"
+        )
+
+    tipo = tipo_sal_da_nome(
+        nome_foglio
+    )
+
+    # SAL individuale:
+    # H = colonna 8 = indice 7
+    # I = colonna 9 = indice 8
+    if (
+        tipo in {
+            "EPAL",
+            "MGIO"
+        }
+        and len(df.columns) >= 9
+    ):
+
+        candidato_fatto = (
+            col_fatto
+            if col_fatto is not None
+            else df.columns[7]
+        )
+
+        candidato_da_fare = (
+            col_da_fare
+            if col_da_fare is not None
+            else df.columns[8]
+        )
+
+        valori_fatto = serie_numerica(
+            df[candidato_fatto]
+        )
+
+        valori_da_fare = serie_numerica(
+            df[candidato_da_fare]
+        )
+
+        if (
+            valori_fatto.notna().any()
+            and valori_da_fare.notna().any()
+        ):
+
+            return (
+                candidato_fatto,
+                candidato_da_fare,
+                "colonne H:I del SAL individuale"
+            )
+
+    return (
+        col_fatto,
+        col_da_fare,
+        "intestazioni disponibili"
+    )
+
+
+# ============================================================
+# RIGHE VALIDE ATTIVITÀ
+# ============================================================
+
+def testo_non_nan(serie):
+
+    return ~serie.isin(
+        [
+            "nan",
+            "none",
+            "nat",
+        ]
+    )
+
+
+def mask_righe_attivita_valide(
+    df,
+    col_attivita=None
+):
+
+    if col_attivita is None:
+
+        return pd.Series(
+            True,
+            index=df.index,
+            dtype=bool,
+        )
+
+    testo = (
+        df[col_attivita]
+        .astype(str)
+        .map(normalizza_testo)
+    )
+
+    mask = (
+        testo.ne("")
+        &
+        testo_non_nan(testo)
+        &
+        ~testo.str.match(
+            r"^(totale|totali|total)\b",
+            na=False,
+        )
+    )
+
+    return mask
+
+
+# ============================================================
+# CALCOLO GIORNI DEL PROGETTO DAL SAL
+# ============================================================
+
+def calcola_giorni_progetto(
+    df_sal,
+    nome_foglio
+):
+
+    (
+        col_fatto,
+        col_da_fare,
+        fonte_colonne
+    ) = trova_colonne_giorni_sal(
+        df_sal,
+        nome_foglio
+    )
+
+    risultato_vuoto = {
+        "disponibile": False,
+        "giorni_fatti": float("nan"),
+        "giorni_da_fare": float("nan"),
+        "giorni_totali": float("nan"),
+        "pct_fatti": float("nan"),
+        "pct_da_fare": float("nan"),
+        "col_fatto": col_fatto,
+        "col_da_fare": col_da_fare,
+        "fonte": fonte_colonne,
+    }
+
+    if (
+        col_fatto is None
+        or col_da_fare is None
+    ):
+
+        return risultato_vuoto
+
+    fatto = (
+        serie_numerica(
+            df_sal[col_fatto]
+        )
+        .clip(lower=0)
+    )
+
+    da_fare = (
+        serie_numerica(
+            df_sal[col_da_fare]
+        )
+        .clip(lower=0)
+    )
+
+    col_attivita = trova_colonna_attivita(
+        df_sal
+    )
+
+    mask = mask_righe_attivita_valide(
+        df_sal,
+        col_attivita
+    )
+
+    mask &= (
+        fatto.notna()
+        |
+        da_fare.notna()
+    )
+
+    fatto = fatto.loc[
+        mask
+    ]
+
+    da_fare = da_fare.loc[
+        mask
+    ]
+
+    if (
+        fatto.empty
+        and da_fare.empty
+    ):
+
+        return risultato_vuoto
+
+    tot_fatto = (
+        fatto
+        .fillna(0)
+        .sum()
+    )
+
+    tot_da_fare = (
+        da_fare
+        .fillna(0)
+        .sum()
+    )
+
+    totale = (
+        tot_fatto
+        + tot_da_fare
+    )
+
+    if totale <= 0:
+
+        return {
+            **risultato_vuoto,
+            "giorni_fatti": tot_fatto,
+            "giorni_da_fare": tot_da_fare,
+            "giorni_totali": totale,
+        }
+
+    pct_fatti = (
+        tot_fatto
+        / totale
+    ) * 100
+
+    pct_da_fare = (
+        tot_da_fare
+        / totale
+    ) * 100
+
+    return {
+        "disponibile": True,
+        "giorni_fatti": tot_fatto,
+        "giorni_da_fare": tot_da_fare,
+        "giorni_totali": totale,
+        "pct_fatti": pct_fatti,
+        "pct_da_fare": pct_da_fare,
+        "col_fatto": col_fatto,
+        "col_da_fare": col_da_fare,
+        "fonte": fonte_colonne,
+    }
+
+
+def calcola_giorni_da_gantt(
+    fatto,
+    da_fare
+):
+
+    if (
+        pd.isna(fatto)
+        or pd.isna(da_fare)
+    ):
+        return None
+
+    fatto = max(
+        float(fatto),
+        0
+    )
+
+    da_fare = max(
+        float(da_fare),
+        0
+    )
+
+    totale = (
+        fatto + da_fare
+    )
+
+    if totale <= 0:
+        return None
+
+    return {
+        "disponibile": True,
+        "giorni_fatti": fatto,
+        "giorni_da_fare": da_fare,
+        "giorni_totali": totale,
+        "pct_fatti": (
+            fatto / totale
+        ) * 100,
+        "pct_da_fare": (
+            da_fare / totale
+        ) * 100,
+        "fonte": "GANTT del progetto",
+    }
 
 
 # ============================================================
@@ -805,7 +1200,7 @@ def check_password():
 
         st.error(
             "Il secret PASSWORD_TEAM "
-            "non è configurato in Streamlit."
+            "non è configurato."
         )
 
         return False
@@ -847,13 +1242,6 @@ def check_password():
     show_spinner=False,
 )
 def carica_workbook(sheet_id):
-    """
-    Scarica il Google Sheet una sola volta
-    e legge tutti i fogli del workbook.
-
-    Questo evita di richiamare Google ad ogni
-    selezione o interazione.
-    """
 
     url = (
         "https://docs.google.com/spreadsheets/d/"
@@ -892,6 +1280,22 @@ def carica_workbook(sheet_id):
 
 
 # ============================================================
+# GANTT COMBINATO
+# ============================================================
+
+def trova_gantt_combinato(
+    sheet_names
+):
+
+    for nome in GANTT_COMBINATI_POSSIBILI:
+
+        if nome in sheet_names:
+            return nome
+
+    return None
+
+
+# ============================================================
 # COSTRUZIONE PORTAFOGLIO
 # ============================================================
 
@@ -900,6 +1304,13 @@ def costruisci_portafoglio(
     team,
     source_sheet
 ):
+    """
+    Costruisce il dataset gestionale.
+
+    IMPORTANTE:
+    la colonna STATO del GANTT ha priorità
+    nel determinare se il progetto è completato.
+    """
 
     if (
         df is None
@@ -912,6 +1323,10 @@ def costruisci_portafoglio(
     )
 
     col_sal = trova_colonna_sal(
+        df
+    )
+
+    col_stato = trova_colonna_stato(
         df
     )
 
@@ -932,9 +1347,8 @@ def costruisci_portafoglio(
 
     out = pd.DataFrame(
         {
-            "Progetto": df[
-                col_progetto
-            ]
+            "Progetto":
+                df[col_progetto]
         }
     )
 
@@ -944,19 +1358,24 @@ def costruisci_portafoglio(
         .str.strip()
     )
 
+    chiavi = (
+        out["Progetto"]
+        .map(
+            chiave_progetto
+        )
+    )
+
     mask = (
-        out["Progetto"].ne("")
-        & out["Progetto"]
-        .str.lower()
-        .ne("nan")
-        & ~out["Progetto"]
-        .str.lower()
-        .isin(
-            [
+        chiavi.ne("")
+        &
+        ~chiavi.isin(
+            {
+                "nan",
+                "none",
                 "totale",
                 "totali",
                 "total",
-            ]
+            }
         )
     )
 
@@ -981,9 +1400,7 @@ def costruisci_portafoglio(
                     col_fatto
                 ]
             )
-            .clip(
-                lower=0
-            )
+            .clip(lower=0)
         )
 
     else:
@@ -1005,9 +1422,7 @@ def costruisci_portafoglio(
                     col_da_fare
                 ]
             )
-            .clip(
-                lower=0
-            )
+            .clip(lower=0)
         )
 
     else:
@@ -1048,8 +1463,8 @@ def costruisci_portafoglio(
             * 100
         )
 
-    # Il valore originale viene mantenuto.
-    # Il valore usato per le barre viene limitato 0-100.
+    # SAL usato per grafici e KPI:
+    # sempre compreso tra 0 e 100.
     out["SAL"] = (
         out["SAL sorgente"]
         .clip(
@@ -1059,31 +1474,72 @@ def costruisci_portafoglio(
     )
 
     # --------------------------------------------------------
-    # ANOMALIE
+    # ANOMALIA SAL
     # --------------------------------------------------------
 
     out["Anomalia SAL"] = (
         (
-            out["SAL sorgente"]
-            < 0
+            out["SAL sorgente"] < 0
         )
         |
         (
-            out["SAL sorgente"]
-            > 100
+            out["SAL sorgente"] > 100
         )
     )
 
     # --------------------------------------------------------
-    # STATO
+    # STATO SORGENTE
     # --------------------------------------------------------
 
-    out["Stato"] = (
-        out["SAL"]
-        .apply(
-            stato_da_sal
+    if col_stato is not None:
+
+        stato_sorgente = (
+            df.loc[
+                indici,
+                col_stato
+            ]
         )
-    )
+
+        out["Stato sorgente"] = (
+            stato_sorgente
+            .where(
+                stato_sorgente.notna(),
+                ""
+            )
+            .astype(str)
+            .str.strip()
+        )
+
+    else:
+
+        out["Stato sorgente"] = ""
+
+    # --------------------------------------------------------
+    # STATO GESTIONALE
+    # --------------------------------------------------------
+    #
+    # Questa è la correzione fondamentale.
+    #
+    # Se STATO = COMPLETO:
+    #     -> Completato
+    #
+    # anche se il SAL è 93%, 97%, 99%, ecc.
+    #
+    # Solo se STATO non indica completamento,
+    # viene applicato il semaforo percentuale.
+    # --------------------------------------------------------
+
+    out["Stato"] = [
+        normalizza_stato_progetto(
+            stato_sorgente,
+            sal
+        )
+        for stato_sorgente, sal
+        in zip(
+            out["Stato sorgente"],
+            out["SAL"]
+        )
+    ]
 
     # --------------------------------------------------------
     # SAL ATTESO
@@ -1132,17 +1588,150 @@ def costruisci_portafoglio(
 
 
 # ============================================================
-# SAL COMPLESSIVO DEL PORTAFOGLIO
+# NORMALIZZAZIONE TEAM
+# ============================================================
+
+def normalizza_team(value):
+
+    text = normalizza_testo(
+        value
+    )
+
+    ha_epal = "epal" in text
+    ha_mgio = "mgio" in text
+
+    if ha_epal and ha_mgio:
+        return "EPAL+MGIO"
+
+    if ha_epal:
+        return "EPAL"
+
+    if ha_mgio:
+        return "MGIO"
+
+    return "N/D"
+
+
+# ============================================================
+# PORTAFOGLIO DAL GANTT COMBINATO
+# ============================================================
+
+def costruisci_portafoglio_combinato(
+    df,
+    portfolio_epal,
+    portfolio_mgio,
+    source_sheet,
+):
+
+    base = costruisci_portafoglio(
+        df,
+        "N/D",
+        source_sheet,
+    )
+
+    if base.empty:
+        return base
+
+    epal_keys = set(
+        portfolio_epal[
+            "Progetto"
+        ]
+        .map(
+            chiave_progetto
+        )
+    )
+
+    mgio_keys = set(
+        portfolio_mgio[
+            "Progetto"
+        ]
+        .map(
+            chiave_progetto
+        )
+    )
+
+    col_progetto = trova_colonna_progetto(
+        df
+    )
+
+    col_team = trova_colonna_team(
+        df
+    )
+
+    team_map = {}
+
+    if (
+        col_progetto is not None
+        and col_team is not None
+    ):
+
+        for progetto, team in zip(
+            df[col_progetto],
+            df[col_team],
+        ):
+
+            key = chiave_progetto(
+                progetto
+            )
+
+            if not key:
+                continue
+
+            team_norm = (
+                normalizza_team(
+                    team
+                )
+            )
+
+            if team_norm != "N/D":
+
+                team_map[key] = (
+                    team_norm
+                )
+
+    def assegna_team(progetto):
+
+        key = chiave_progetto(
+            progetto
+        )
+
+        if key in team_map:
+            return team_map[key]
+
+        in_epal = (
+            key in epal_keys
+        )
+
+        in_mgio = (
+            key in mgio_keys
+        )
+
+        if in_epal and in_mgio:
+            return "EPAL+MGIO"
+
+        if in_epal:
+            return "EPAL"
+
+        if in_mgio:
+            return "MGIO"
+
+        return "N/D"
+
+    base["Team"] = (
+        base["Progetto"]
+        .apply(
+            assegna_team
+        )
+    )
+
+    return base
+
+
+# ============================================================
+# SAL COMPLESSIVO PORTAFOGLIO
 # ============================================================
 
 def portfolio_sal(df):
-    """
-    Preferisce il calcolo ponderato
-    sui giorni fatti / giorni da fare.
-
-    Se i giorni non sono disponibili,
-    utilizza la media dei SAL.
-    """
 
     if df.empty:
 
@@ -1157,6 +1746,8 @@ def portfolio_sal(df):
         df["Da fare"].notna()
     )
 
+    # Prima scelta:
+    # SAL ponderato sui giorni.
     if validi_giorni.any():
 
         fatto = (
@@ -1176,21 +1767,21 @@ def portfolio_sal(df):
         )
 
         totale = (
-            fatto
-            + residuo
+            fatto + residuo
         )
 
         if totale > 0:
 
             return (
                 (
-                    fatto
-                    / totale
+                    fatto / totale
                 )
                 * 100,
                 "ponderato sui giorni"
             )
 
+    # Fallback:
+    # media dei SAL disponibili.
     if df["SAL"].notna().any():
 
         return (
@@ -1205,53 +1796,50 @@ def portfolio_sal(df):
 
 
 # ============================================================
-# PROGETTI PRESENTI IN ENTRAMBI I PORTAFOGLI
+# FLAG PROGETTI PRESENTI IN EPAL E MGIO
 # ============================================================
 
-def aggiungi_flag_doppio_portafoglio(
-    df
+def aggiungi_flag_condiviso(
+    df,
+    portfolio_epal,
+    portfolio_mgio,
 ):
 
     df = df.copy()
 
-    if df.empty:
-
-        df[
-            "Presente in entrambi"
-        ] = False
-
-        return df
-
-    chiave = (
-        df["Progetto"]
+    epal_keys = set(
+        portfolio_epal[
+            "Progetto"
+        ]
         .map(
-            normalizza_testo
+            chiave_progetto
         )
     )
 
-    team_count = (
-        pd.DataFrame(
-            {
-                "chiave": chiave,
-                "Team": df["Team"],
-            }
+    mgio_keys = set(
+        portfolio_mgio[
+            "Progetto"
+        ]
+        .map(
+            chiave_progetto
         )
-        .groupby(
-            "chiave"
-        )["Team"]
-        .nunique()
     )
 
-    condivisi = set(
-        team_count[
-            team_count > 1
-        ].index
+    condivisi = (
+        epal_keys
+        & mgio_keys
     )
 
     df[
         "Presente in entrambi"
-    ] = chiave.isin(
-        condivisi
+    ] = (
+        df["Progetto"]
+        .map(
+            chiave_progetto
+        )
+        .isin(
+            condivisi
+        )
     )
 
     return df
@@ -1270,54 +1858,82 @@ def lista_fogli_sal(
 
     for nome in sheet_names:
 
-        # Esclude i template.
         if nome in TEMPLATE_SAL:
             continue
 
-        nome_norm = normalizza_testo(
+        if not normalizza_testo(
             nome
-        )
-
-        if not nome_norm.startswith(
+        ).startswith(
             "sal_"
         ):
             continue
 
-        if (
-            team == "EPAL"
-            and "(epal)"
-            not in nome_norm
-        ):
-            continue
-
-        if (
-            team == "MGIO"
-            and "(mgio)"
-            not in nome_norm
-        ):
-            continue
-
-        risultati.append(
+        tipo = tipo_sal_da_nome(
             nome
         )
+
+        if team is None:
+
+            risultati.append(
+                nome
+            )
+
+            continue
+
+        if team == "EPAL":
+
+            if tipo in {
+                "EPAL",
+                "EPAL+MGIO"
+            }:
+
+                risultati.append(
+                    nome
+                )
+
+        elif team == "MGIO":
+
+            if tipo in {
+                "MGIO",
+                "EPAL+MGIO"
+            }:
+
+                risultati.append(
+                    nome
+                )
+
+        elif team == "EPAL+MGIO":
+
+            if tipo == "EPAL+MGIO":
+
+                risultati.append(
+                    nome
+                )
+
+        else:
+
+            risultati.append(
+                nome
+            )
 
     return risultati
 
 
 # ============================================================
-# MATCH AUTOMATICO PROGETTO -> FOGLIO SAL
+# MATCH AUTOMATICO PROGETTO -> SAL
 # ============================================================
 
 def score_match_foglio(
     progetto,
-    foglio
+    foglio,
+    team=None,
 ):
 
-    progetto_norm = normalizza_testo(
+    progetto_norm = chiave_progetto(
         progetto
     )
 
-    foglio_norm = normalizza_testo(
+    foglio_norm = chiave_progetto(
         foglio
     )
 
@@ -1330,7 +1946,7 @@ def score_match_foglio(
     score = 0.0
 
     if progetto_norm in foglio_norm:
-        score += 0.70
+        score += 0.65
 
     progetto_tokens = tokenizza(
         progetto
@@ -1340,22 +1956,54 @@ def score_match_foglio(
         foglio
     )
 
-    if progetto_tokens:
+    if (
+        progetto_tokens
+        and foglio_tokens
+    ):
 
-        overlap = (
-            len(
-                progetto_tokens
-                & foglio_tokens
-            )
-            / len(
-                progetto_tokens
-            )
+        intersezione = (
+            progetto_tokens
+            & foglio_tokens
+        )
+
+        copertura_foglio = (
+            len(intersezione)
+            / len(foglio_tokens)
+        )
+
+        copertura_progetto = (
+            len(intersezione)
+            / len(progetto_tokens)
         )
 
         score += (
-            0.30
-            * overlap
+            0.55
+            * copertura_foglio
         )
+
+        score += (
+            0.20
+            * copertura_progetto
+        )
+
+    tipo = tipo_sal_da_nome(
+        foglio
+    )
+
+    if team is not None:
+
+        if tipo == team:
+            score += 0.10
+
+        elif (
+            tipo == "EPAL+MGIO"
+            and team in {
+                "EPAL",
+                "MGIO"
+            }
+        ):
+
+            score += 0.03
 
     return min(
         score,
@@ -1366,13 +2014,20 @@ def score_match_foglio(
 def trova_foglio_sal_migliore(
     progetto,
     team,
-    sheet_names
+    sheet_names,
 ):
 
     candidati = lista_fogli_sal(
         sheet_names,
         team
     )
+
+    if not candidati:
+
+        candidati = lista_fogli_sal(
+            sheet_names,
+            None
+        )
 
     if not candidati:
 
@@ -1386,7 +2041,8 @@ def trova_foglio_sal_migliore(
             nome,
             score_match_foglio(
                 progetto,
-                nome
+                nome,
+                team,
             )
         )
         for nome in candidati
@@ -1401,10 +2057,13 @@ def trova_foglio_sal_migliore(
 
 
 # ============================================================
-# COSTRUZIONE DETTAGLIO ATTIVITÀ
+# DETTAGLIO ATTIVITÀ
 # ============================================================
 
-def costruisci_attivita(df):
+def costruisci_attivita(
+    df,
+    nome_foglio,
+):
 
     if (
         df is None
@@ -1420,23 +2079,22 @@ def costruisci_attivita(df):
         df
     )
 
-    col_fatto = trova_colonna_fatto(
-        df
-    )
-
-    col_da_fare = trova_colonna_da_fare(
-        df
+    (
+        col_fatto,
+        col_da_fare,
+        _
+    ) = trova_colonne_giorni_sal(
+        df,
+        nome_foglio
     )
 
     if col_attivita is None:
-
         return pd.DataFrame()
 
     out = pd.DataFrame(
         {
-            "Attività": df[
-                col_attivita
-            ]
+            "Attività":
+                df[col_attivita]
         }
     )
 
@@ -1446,22 +2104,9 @@ def costruisci_attivita(df):
         .str.strip()
     )
 
-    mask = (
-        out["Attività"].ne("")
-        &
-        out["Attività"]
-        .str.lower()
-        .ne("nan")
-        &
-        ~out["Attività"]
-        .str.lower()
-        .isin(
-            [
-                "totale",
-                "totali",
-                "total",
-            ]
-        )
+    mask = mask_righe_attivita_valide(
+        df,
+        col_attivita
     )
 
     out = out.loc[
@@ -1479,6 +2124,7 @@ def costruisci_attivita(df):
                     col_fatto
                 ]
             )
+            .clip(lower=0)
         )
 
     else:
@@ -1496,6 +2142,7 @@ def costruisci_attivita(df):
                     col_da_fare
                 ]
             )
+            .clip(lower=0)
         )
 
     else:
@@ -1526,8 +2173,7 @@ def costruisci_attivita(df):
             out["Fatto"]
             .div(
                 denominatore.where(
-                    denominatore
-                    > 0
+                    denominatore > 0
                 )
             )
             * 100
@@ -1543,13 +2189,11 @@ def costruisci_attivita(df):
 
     out["Anomalia SAL"] = (
         (
-            out["SAL sorgente"]
-            < 0
+            out["SAL sorgente"] < 0
         )
         |
         (
-            out["SAL sorgente"]
-            > 100
+            out["SAL sorgente"] > 100
         )
     )
 
@@ -1560,7 +2204,7 @@ def costruisci_attivita(df):
         )
     )
 
-    out = (
+    return (
         out
         .dropna(
             subset=[
@@ -1573,11 +2217,9 @@ def costruisci_attivita(df):
         )
     )
 
-    return out
-
 
 # ============================================================
-# GRAFICO RANKING PROGETTI
+# GRAFICO RANKING
 # ============================================================
 
 def grafico_ranking(
@@ -1588,9 +2230,7 @@ def grafico_ranking(
     plot_df = (
         df
         .dropna(
-            subset=[
-                "SAL"
-            ]
+            subset=["SAL"]
         )
         .sort_values(
             "SAL",
@@ -1602,8 +2242,7 @@ def grafico_ranking(
     if plot_df.empty:
 
         st.info(
-            "Nessun SAL disponibile "
-            "per il grafico."
+            "Nessun SAL disponibile."
         )
 
         return
@@ -1644,6 +2283,7 @@ def grafico_ranking(
             "Team",
             "SAL sorgente display",
             "Stato",
+            "Stato sorgente",
             "Anomalia SAL",
         ],
         labels={
@@ -1655,10 +2295,7 @@ def grafico_ranking(
     )
 
     fig.update_xaxes(
-        range=[
-            0,
-            100
-        ],
+        range=[0, 100],
         tickmode="array",
         tickvals=list(
             range(
@@ -1686,8 +2323,7 @@ def grafico_ranking(
     fig.update_layout(
         height=max(
             430,
-            len(plot_df)
-            * 38
+            len(plot_df) * 38
         ),
         margin=dict(
             l=20,
@@ -1713,8 +2349,9 @@ def grafico_ranking(
             "Team: %{customdata[0]}<br>"
             "SAL visualizzato: %{x:.1f}%<br>"
             "SAL sorgente: %{customdata[1]}<br>"
-            "Stato: %{customdata[2]}<br>"
-            "Anomalia: %{customdata[3]}"
+            "Stato dashboard: %{customdata[2]}<br>"
+            "Stato GANTT: %{customdata[3]}<br>"
+            "Anomalia SAL: %{customdata[4]}"
             "<extra></extra>"
         ),
     )
@@ -1727,10 +2364,12 @@ def grafico_ranking(
 
 
 # ============================================================
-# DISTRIBUZIONE STATO
+# DISTRIBUZIONE STATI
 # ============================================================
 
-def grafico_distribuzione_stati(df):
+def grafico_distribuzione_stati(
+    df
+):
 
     ordine = [
         "Critico",
@@ -1803,21 +2442,23 @@ def grafico_distribuzione_stati(df):
 
 
 # ============================================================
-# CONFRONTO EPAL / MGIO
+# CONFRONTO TEAM
 # ============================================================
 
 def grafico_confronto_team(df):
 
+    ordine_team = [
+        "EPAL",
+        "MGIO",
+        "EPAL+MGIO",
+    ]
+
     righe = []
 
-    for team in [
-        "EPAL",
-        "MGIO"
-    ]:
+    for team in ordine_team:
 
         team_df = df[
-            df["Team"]
-            == team
+            df["Team"] == team
         ]
 
         if team_df.empty:
@@ -1845,8 +2486,7 @@ def grafico_confronto_team(df):
     if confronto.empty:
 
         st.info(
-            "Il confronto EPAL/MGIO "
-            "non è disponibile."
+            "Confronto team non disponibile."
         )
 
         return
@@ -1871,8 +2511,8 @@ def grafico_confronto_team(df):
             "Progetti",
         ],
         title=(
-            "Confronto portafogli "
-            "EPAL e MGIO"
+            "Confronto avanzamento "
+            "per portafoglio"
         ),
         labels={
             "SAL": "SAL portafoglio",
@@ -1881,10 +2521,7 @@ def grafico_confronto_team(df):
     )
 
     fig.update_xaxes(
-        range=[
-            0,
-            100
-        ],
+        range=[0, 100],
         tickvals=[
             0,
             20,
@@ -1938,10 +2575,6 @@ def grafico_confronto_team(df):
 # ============================================================
 
 def grafico_reale_atteso(df):
-    """
-    Viene mostrato solo quando la fonte
-    contiene realmente il SAL atteso.
-    """
 
     validi = df[
         df["SAL atteso"].notna()
@@ -1954,9 +2587,7 @@ def grafico_reale_atteso(df):
 
     validi[
         "SAL reale"
-    ] = validi[
-        "SAL"
-    ]
+    ] = validi["SAL"]
 
     long_df = validi.melt(
         id_vars=[
@@ -1991,10 +2622,7 @@ def grafico_reale_atteso(df):
     )
 
     fig.update_xaxes(
-        range=[
-            0,
-            100
-        ],
+        range=[0, 100],
         tickvals=list(
             range(
                 0,
@@ -2015,8 +2643,7 @@ def grafico_reale_atteso(df):
     fig.update_layout(
         height=max(
             430,
-            len(validi)
-            * 50
+            len(validi) * 50
         ),
         margin=dict(
             l=20,
@@ -2031,15 +2658,6 @@ def grafico_reale_atteso(df):
             xanchor="left",
             x=0,
         ),
-    )
-
-    fig.update_traces(
-        hovertemplate=(
-            "<b>%{y}</b><br>"
-            "Team: %{customdata[0]}<br>"
-            "%{fullData.name}: %{x:.1f}%"
-            "<extra></extra>"
-        )
     )
 
     st.plotly_chart(
@@ -2098,10 +2716,7 @@ def grafico_attivita(
     )
 
     fig.update_xaxes(
-        range=[
-            0,
-            100
-        ],
+        range=[0, 100],
         tickvals=list(
             range(
                 0,
@@ -2126,8 +2741,7 @@ def grafico_attivita(
     fig.update_layout(
         height=max(
             430,
-            len(plot_df)
-            * 40
+            len(plot_df) * 40
         ),
         margin=dict(
             l=20,
@@ -2158,6 +2772,136 @@ def grafico_attivita(
 
 
 # ============================================================
+# BARRA 100% FATTO / DA FARE
+# ============================================================
+
+def grafico_ripartizione_lavoro(
+    pct_fatti,
+    pct_da_fare,
+):
+
+    if (
+        pd.isna(pct_fatti)
+        or pd.isna(pct_da_fare)
+    ):
+        return
+
+    df_progress = pd.DataFrame(
+        {
+            "Voce": [
+                "Lavoro complessivo",
+                "Lavoro complessivo",
+            ],
+            "Stato": [
+                "Fatto",
+                "Da fare",
+            ],
+            "Percentuale": [
+                pct_fatti,
+                pct_da_fare,
+            ],
+            "Etichetta": [
+                (
+                    "Fatto "
+                    + formatta_percentuale(
+                        pct_fatti
+                    )
+                ),
+                (
+                    "Da fare "
+                    + formatta_percentuale(
+                        pct_da_fare
+                    )
+                ),
+            ],
+        }
+    )
+
+    fig = px.bar(
+        df_progress,
+        x="Percentuale",
+        y="Voce",
+        color="Stato",
+        orientation="h",
+        barmode="stack",
+        text="Etichetta",
+        color_discrete_map=(
+            COLORI_RIPARTIZIONE
+        ),
+        title=(
+            "Ripartizione complessiva "
+            "del lavoro"
+        ),
+        labels={
+            "Percentuale": "",
+            "Voce": "",
+            "Stato": "",
+        },
+    )
+
+    fig.update_xaxes(
+        range=[0, 100],
+        tickmode="array",
+        tickvals=[
+            0,
+            20,
+            40,
+            60,
+            80,
+            100,
+        ],
+        ticktext=[
+            "0%",
+            "20%",
+            "40%",
+            "60%",
+            "80%",
+            "100%",
+        ],
+    )
+
+    fig.update_yaxes(
+        showticklabels=False,
+        title=None,
+    )
+
+    fig.update_traces(
+        textposition="inside",
+        insidetextanchor="middle",
+        hovertemplate=(
+            "<b>%{fullData.name}</b><br>"
+            "%{x:.1f}%"
+            "<extra></extra>"
+        ),
+    )
+
+    fig.update_layout(
+        height=245,
+        margin=dict(
+            l=20,
+            r=20,
+            t=60,
+            b=35,
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0,
+        ),
+        uniformtext_minsize=10,
+        uniformtext_mode="hide",
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config=PLOTLY_CONFIG,
+    )
+
+
+# ============================================================
 # TABELLA PORTAFOGLIO
 # ============================================================
 
@@ -2168,6 +2912,7 @@ def tabella_portafoglio(df):
         "Team",
         "SAL",
         "Stato",
+        "Stato sorgente",
         "Fatto",
         "Da fare",
     ]
@@ -2181,19 +2926,6 @@ def tabella_portafoglio(df):
             "Scostamento",
         ]
 
-    if (
-        "Presente in entrambi"
-        in df.columns
-        and
-        df[
-            "Presente in entrambi"
-        ].any()
-    ):
-
-        colonne.append(
-            "Presente in entrambi"
-        )
-
     tabella = df[
         colonne
     ].copy()
@@ -2206,6 +2938,11 @@ def tabella_portafoglio(df):
                 min_value=0,
                 max_value=100,
                 format="%.1f%%",
+            ),
+
+        "Stato sorgente":
+            st.column_config.TextColumn(
+                "Stato GANTT"
             ),
 
         "Fatto":
@@ -2238,8 +2975,8 @@ def tabella_portafoglio(df):
             "Scostamento"
         ] = (
             st.column_config.NumberColumn(
-                "Scostamento",
-                format="%+.1f p.p.",
+                "Scostamento (p.p.)",
+                format="%.1f",
             )
         )
 
@@ -2281,11 +3018,10 @@ if not check_password():
 # HEADER
 # ============================================================
 
-header_left, header_right = st.columns(
-    [
-        6,
-        1
-    ]
+header_left, header_right = (
+    st.columns(
+        [6, 1]
+    )
 )
 
 with header_left:
@@ -2319,13 +3055,13 @@ with header_right:
 
 
 # ============================================================
-# CARICAMENTO WORKBOOK
+# CARICAMENTO DATI
 # ============================================================
 
 try:
 
     with st.spinner(
-        "Caricamento dati dal Dashboard Google Sheets..."
+        "Caricamento dati dal Dashboard..."
     ):
 
         (
@@ -2353,10 +3089,12 @@ sheet_names = list(
     fogli.keys()
 )
 
+gantt_combinato_nome = (
+    trova_gantt_combinato(
+        sheet_names
+    )
+)
 
-# ============================================================
-# STATO SINCRONIZZAZIONE APP
-# ============================================================
 
 st.caption(
     "● Dati caricati dall'app: "
@@ -2374,10 +3112,6 @@ st.sidebar.title(
 )
 
 
-# ------------------------------------------------------------
-# REFRESH
-# ------------------------------------------------------------
-
 if st.sidebar.button(
     "🔄 Aggiorna dati",
     use_container_width=True,
@@ -2387,10 +3121,6 @@ if st.sidebar.button(
 
     st.rerun()
 
-
-# ------------------------------------------------------------
-# VISTA
-# ------------------------------------------------------------
 
 vista = st.sidebar.radio(
     "Vista",
@@ -2403,22 +3133,8 @@ vista = st.sidebar.radio(
 )
 
 
-# ------------------------------------------------------------
-# PORTAFOGLIO
-# ------------------------------------------------------------
-
-scope = st.sidebar.radio(
-    "Portfolio",
-    [
-        "Tutti - EPAL+MGIO",
-        "EPAL",
-        "MGIO",
-    ],
-)
-
-
 # ============================================================
-# COSTRUZIONE GANTT EPAL
+# COSTRUZIONE PORTAFOGLIO EPAL
 # ============================================================
 
 if GANTT_EPAL in fogli:
@@ -2441,7 +3157,7 @@ else:
 
 
 # ============================================================
-# COSTRUZIONE GANTT MGIO
+# COSTRUZIONE PORTAFOGLIO MGIO
 # ============================================================
 
 if GANTT_MGIO in fogli:
@@ -2464,18 +3180,10 @@ else:
 
 
 # ============================================================
-# COSTRUZIONE EPAL + MGIO
+# PORTAFOGLIO COMBINATO FALLBACK
 # ============================================================
 
-# Per il consolidato vengono uniti
-# i due GANTT individuali.
-#
-# Questo garantisce che per ogni progetto
-# rimanga sempre disponibile l'informazione:
-#
-# TEAM = EPAL / MGIO
-
-portfolio_combinato = pd.concat(
+portfolio_concat = pd.concat(
     [
         portfolio_epal,
         portfolio_mgio,
@@ -2484,16 +3192,94 @@ portfolio_combinato = pd.concat(
 )
 
 
-portfolio_combinato = (
-    aggiungi_flag_doppio_portafoglio(
-        portfolio_combinato
+# ============================================================
+# GANTT COMBINATO
+# ============================================================
+
+if gantt_combinato_nome is not None:
+
+    portfolio_da_gantt_combinato = (
+        costruisci_portafoglio_combinato(
+            fogli[
+                gantt_combinato_nome
+            ],
+            portfolio_epal,
+            portfolio_mgio,
+            gantt_combinato_nome,
+        )
+    )
+
+else:
+
+    portfolio_da_gantt_combinato = (
+        pd.DataFrame()
+    )
+
+
+# Se il GANTT combinato è disponibile e contiene
+# dati validi, viene utilizzato come fonte primaria.
+if (
+    not portfolio_da_gantt_combinato.empty
+    and
+    portfolio_da_gantt_combinato[
+        "SAL"
+    ]
+    .notna()
+    .any()
+):
+
+    portfolio_tutti = (
+        portfolio_da_gantt_combinato
+        .copy()
+    )
+
+else:
+
+    portfolio_tutti = (
+        portfolio_concat.copy()
+    )
+
+
+portfolio_tutti = (
+    aggiungi_flag_condiviso(
+        portfolio_tutti,
+        portfolio_epal,
+        portfolio_mgio,
     )
 )
 
 
 # ============================================================
-# SELEZIONE PORTAFOGLIO
+# SCELTA PORTAFOGLIO
 # ============================================================
+
+scope_options = [
+    "Tutti - EPAL+MGIO",
+    "EPAL",
+    "MGIO",
+]
+
+if (
+    not portfolio_tutti.empty
+    and
+    (
+        portfolio_tutti[
+            "Team"
+        ]
+        == "EPAL+MGIO"
+    ).any()
+):
+
+    scope_options.append(
+        "EPAL+MGIO"
+    )
+
+
+scope = st.sidebar.radio(
+    "Portfolio",
+    scope_options,
+)
+
 
 if scope == "EPAL":
 
@@ -2501,98 +3287,33 @@ if scope == "EPAL":
         portfolio_epal.copy()
     )
 
-
 elif scope == "MGIO":
 
     portfolio = (
         portfolio_mgio.copy()
     )
 
+elif scope == "EPAL+MGIO":
+
+    portfolio = (
+        portfolio_tutti[
+            portfolio_tutti[
+                "Team"
+            ]
+            == "EPAL+MGIO"
+        ]
+        .copy()
+    )
 
 else:
 
     portfolio = (
-        portfolio_combinato.copy()
+        portfolio_tutti.copy()
     )
 
 
 # ============================================================
-# FALLBACK GANTT EPAL+MGIO
-# ============================================================
-
-# Se per qualsiasi ragione i due GANTT
-# individuali non fossero disponibili,
-# l'app tenta di utilizzare direttamente
-# GANTT_SAL_PROGETTI_EPAL+MGIO.
-#
-# Questo è possibile se il foglio contiene
-# una colonna TEAM / RESPONSABILE / CONSULENTE.
-
-if (
-    scope == "Tutti - EPAL+MGIO"
-    and portfolio.empty
-    and GANTT_COMBINATO in fogli
-):
-
-    df_combinato = fogli[
-        GANTT_COMBINATO
-    ]
-
-    col_team = trova_colonna_team(
-        df_combinato
-    )
-
-    if col_team is not None:
-
-        parti = []
-
-        for team in [
-            "EPAL",
-            "MGIO",
-        ]:
-
-            mask = (
-                df_combinato[
-                    col_team
-                ]
-                .astype(str)
-                .str.upper()
-                .str.contains(
-                    team,
-                    na=False,
-                )
-            )
-
-            parte = (
-                costruisci_portafoglio(
-                    df_combinato.loc[
-                        mask
-                    ],
-                    team,
-                    GANTT_COMBINATO,
-                )
-            )
-
-            parti.append(
-                parte
-            )
-
-        portfolio = (
-            pd.concat(
-                parti,
-                ignore_index=True,
-            )
-        )
-
-        portfolio = (
-            aggiungi_flag_doppio_portafoglio(
-                portfolio
-            )
-        )
-
-
-# ============================================================
-# FILTRI PORTAFOGLIO
+# FILTRI
 # ============================================================
 
 portfolio_filtrato = (
@@ -2615,19 +3336,15 @@ if (
     )
 
 
-    # --------------------------------------------------------
-    # RICERCA PROGETTO
-    # --------------------------------------------------------
-
     ricerca = st.sidebar.text_input(
-        "🔎 Cerca progetto"
+        "🔎 Cerca progetto",
+        key=f"ricerca_{scope}",
     )
 
 
-    # --------------------------------------------------------
-    # STATO
-    # --------------------------------------------------------
-
+    # Chiave specifica per portafoglio:
+    # passando da EPAL a MGIO il filtro ritorna
+    # correttamente su Tutti.
     filtro_stato = (
         st.sidebar.selectbox(
             "Stato",
@@ -2638,31 +3355,22 @@ if (
                 "Avanzato",
                 "Completato",
             ],
+            key=f"stato_{scope}",
         )
     )
 
-
-    # --------------------------------------------------------
-    # RANGE SAL
-    # --------------------------------------------------------
 
     range_sal = (
         st.sidebar.slider(
             "Intervallo SAL",
             min_value=0,
             max_value=100,
-            value=(
-                0,
-                100
-            ),
+            value=(0, 100),
             step=1,
+            key=f"range_sal_{scope}",
         )
     )
 
-
-    # --------------------------------------------------------
-    # APPLICAZIONE RICERCA
-    # --------------------------------------------------------
 
     if ricerca.strip():
 
@@ -2681,10 +3389,6 @@ if (
         )
 
 
-    # --------------------------------------------------------
-    # APPLICAZIONE STATO
-    # --------------------------------------------------------
-
     if filtro_stato != "Tutti":
 
         portfolio_filtrato = (
@@ -2696,10 +3400,6 @@ if (
             ]
         )
 
-
-    # --------------------------------------------------------
-    # APPLICAZIONE RANGE
-    # --------------------------------------------------------
 
     portfolio_filtrato = (
         portfolio_filtrato[
@@ -2731,10 +3431,6 @@ if vista == "Executive":
         st.stop()
 
 
-    # --------------------------------------------------------
-    # SAL PORTAFOGLIO
-    # --------------------------------------------------------
-
     (
         sal_portafoglio,
         metodo_sal
@@ -2742,10 +3438,6 @@ if vista == "Executive":
         portfolio_filtrato
     )
 
-
-    # --------------------------------------------------------
-    # KPI
-    # --------------------------------------------------------
 
     totale_progetti = len(
         portfolio_filtrato
@@ -2837,7 +3529,7 @@ if vista == "Executive":
 
 
     # ========================================================
-    # ANOMALIE SAL
+    # ANOMALIE
     # ========================================================
 
     if anomalie > 0:
@@ -2845,8 +3537,8 @@ if vista == "Executive":
         st.warning(
             f"Rilevati {anomalie} valori SAL "
             "fuori dall'intervallo 0–100%. "
-            "Nei grafici la barra è limitata "
-            "a 0–100%, ma il valore sorgente "
+            "Nei grafici la barra viene limitata "
+            "a 0–100%, mentre il valore sorgente "
             "rimane disponibile per il controllo."
         )
 
@@ -2866,6 +3558,8 @@ if vista == "Executive":
                         "Team",
                         "SAL sorgente",
                         "SAL",
+                        "Stato",
+                        "Stato sorgente",
                     ]
                 ]
                 .copy()
@@ -2908,43 +3602,6 @@ if vista == "Executive":
 
 
     # ========================================================
-    # PROGETTI PRESENTI IN ENTRAMBI
-    # ========================================================
-
-    if (
-        "Presente in entrambi"
-        in portfolio_filtrato.columns
-        and
-        portfolio_filtrato[
-            "Presente in entrambi"
-        ]
-        .any()
-    ):
-
-        n_condivisi = (
-            portfolio_filtrato.loc[
-                portfolio_filtrato[
-                    "Presente in entrambi"
-                ],
-                "Progetto",
-            ]
-            .map(
-                normalizza_testo
-            )
-            .nunique()
-        )
-
-
-        st.info(
-            f"{n_condivisi} progetto/i risultano "
-            "presenti sia nel portafoglio EPAL "
-            "sia nel portafoglio MGIO. "
-            "La dashboard li mantiene distinti "
-            "per team, senza presumere che siano duplicati."
-        )
-
-
-    # ========================================================
     # RANKING
     # ========================================================
 
@@ -2955,7 +3612,7 @@ if vista == "Executive":
 
 
     # ========================================================
-    # DISTRIBUZIONE + CONFRONTO TEAM
+    # DISTRIBUZIONE + CONFRONTO
     # ========================================================
 
     col_left, col_right = (
@@ -2978,12 +3635,7 @@ if vista == "Executive":
                 portfolio_filtrato
             )
 
-
         else:
-
-            # ------------------------------------------------
-            # CARICO DI LAVORO
-            # ------------------------------------------------
 
             fatto = (
                 portfolio_filtrato[
@@ -2992,7 +3644,6 @@ if vista == "Executive":
                 .dropna()
                 .sum()
             )
-
 
             residuo = (
                 portfolio_filtrato[
@@ -3003,59 +3654,73 @@ if vista == "Executive":
             )
 
 
-            carico = pd.DataFrame(
-                {
-                    "Voce": [
-                        "Giorni fatti",
-                        "Giorni da fare",
-                    ],
-                    "Giorni": [
-                        fatto,
-                        residuo,
-                    ],
-                }
-            )
+            if (
+                fatto > 0
+                or residuo > 0
+            ):
+
+                carico = pd.DataFrame(
+                    {
+                        "Voce": [
+                            "Giorni fatti",
+                            "Giorni da fare",
+                        ],
+                        "Giorni": [
+                            fatto,
+                            residuo,
+                        ],
+                    }
+                )
 
 
-            fig = px.bar(
-                carico,
-                x="Giorni",
-                y="Voce",
-                orientation="h",
-                title=(
-                    "Carico di lavoro registrato"
-                ),
-                text="Giorni",
-            )
+                fig = px.bar(
+                    carico,
+                    x="Giorni",
+                    y="Voce",
+                    orientation="h",
+                    title=(
+                        "Carico di lavoro registrato"
+                    ),
+                    text="Giorni",
+                )
 
 
-            fig.update_traces(
-                texttemplate="%{text:.1f}",
-                textposition="outside",
-            )
+                fig.update_traces(
+                    texttemplate="%{text:.1f}",
+                    textposition="outside",
+                )
 
 
-            fig.update_layout(
-                height=390,
-                margin=dict(
-                    l=20,
-                    r=55,
-                    t=60,
-                    b=40,
-                ),
-                showlegend=False,
-            )
+                fig.update_layout(
+                    height=390,
+                    margin=dict(
+                        l=20,
+                        r=55,
+                        t=60,
+                        b=40,
+                    ),
+                    showlegend=False,
+                )
 
 
-            st.plotly_chart(
-                fig,
-                use_container_width=True,
-                config=PLOTLY_CONFIG,
-            )
+                st.plotly_chart(
+                    fig,
+                    use_container_width=True,
+                    config=PLOTLY_CONFIG,
+                )
+
+            else:
+
+                st.info(
+                    "I giorni fatti / da fare "
+                    "non sono disponibili nel GANTT "
+                    "di portafoglio. Sono comunque "
+                    "calcolati nei singoli fogli SAL."
+                )
 
 
     # ========================================================
-    # PRIORITÀ OPERATIVE
+    # PRIORITÀ
     # ========================================================
 
     priorita = (
@@ -3091,7 +3756,7 @@ if vista == "Executive":
         )
 
 
-        priorita_view = (
+        st.dataframe(
             priorita[
                 [
                     "Progetto",
@@ -3100,13 +3765,7 @@ if vista == "Executive":
                     "Stato",
                     "Da fare",
                 ]
-            ]
-            .copy()
-        )
-
-
-        st.dataframe(
-            priorita_view,
+            ],
             use_container_width=True,
             hide_index=True,
             column_config={
@@ -3166,10 +3825,6 @@ if vista == "Executive":
         portfolio_filtrato
     )
 
-
-    # ========================================================
-    # DOWNLOAD
-    # ========================================================
 
     st.download_button(
         "⬇️ Scarica portafoglio filtrato in CSV",
@@ -3241,7 +3896,6 @@ elif vista == "Avanzamento":
             )
         )
 
-
     elif ordinamento == "SAL decrescente":
 
         avanzamento = (
@@ -3251,7 +3905,6 @@ elif vista == "Avanzamento":
                 ascending=False
             )
         )
-
 
     else:
 
@@ -3337,13 +3990,9 @@ elif vista == "Dettaglio progetto":
     options[
         "Label"
     ] = (
-        options[
-            "Progetto"
-        ]
+        options["Progetto"]
         + " · "
-        + options[
-            "Team"
-        ]
+        + options["Team"]
     )
 
 
@@ -3415,8 +4064,38 @@ elif vista == "Dettaglio progetto":
 
 
     # ========================================================
-    # HEADER PROGETTO
+    # ASSOCIAZIONE AUTOMATICA SAL
     # ========================================================
+
+    (
+        foglio_auto,
+        score
+    ) = (
+        trova_foglio_sal_migliore(
+            progetto,
+            team,
+            sheet_names,
+        )
+    )
+
+
+    candidati_sal = (
+        lista_fogli_sal(
+            sheet_names,
+            team
+        )
+    )
+
+
+    if not candidati_sal:
+
+        candidati_sal = (
+            lista_fogli_sal(
+                sheet_names,
+                None
+            )
+        )
+
 
     st.subheader(
         progetto
@@ -3428,8 +4107,141 @@ elif vista == "Dettaglio progetto":
     )
 
 
+    if not candidati_sal:
+
+        st.warning(
+            "Non è stato individuato "
+            "alcun foglio SAL compatibile."
+        )
+
+        st.stop()
+
+
+    default_idx = 0
+
+
+    if (
+        foglio_auto is not None
+        and foglio_auto in candidati_sal
+    ):
+
+        default_idx = (
+            candidati_sal.index(
+                foglio_auto
+            )
+        )
+
+
+    foglio_sal = st.selectbox(
+        "Foglio SAL associato",
+        candidati_sal,
+        index=default_idx,
+        help=(
+            "La dashboard associa automaticamente "
+            "il foglio SAL più compatibile con "
+            "il progetto. È possibile modificare "
+            "manualmente la selezione."
+        ),
+    )
+
+
+    if (
+        foglio_auto is not None
+        and score >= 0.30
+    ):
+
+        st.caption(
+            "Associazione automatica: "
+            f"{foglio_auto}"
+        )
+
+    elif score < 0.30:
+
+        st.info(
+            "L'associazione automatica "
+            "ha una corrispondenza limitata. "
+            "Verifica il foglio SAL selezionato."
+        )
+
+
     # ========================================================
-    # KPI PROGETTO
+    # DATI SAL
+    # ========================================================
+
+    df_sal = fogli[
+        foglio_sal
+    ]
+
+
+    riepilogo_giorni = (
+        calcola_giorni_progetto(
+            df_sal,
+            foglio_sal,
+        )
+    )
+
+
+    # ========================================================
+    # FALLBACK GIORNI DAL GANTT
+    # ========================================================
+
+    if not riepilogo_giorni[
+        "disponibile"
+    ]:
+
+        fallback_gantt = (
+            calcola_giorni_da_gantt(
+                riepilogo["Fatto"],
+                riepilogo["Da fare"],
+            )
+        )
+
+        if fallback_gantt is not None:
+
+            riepilogo_giorni = (
+                fallback_gantt
+            )
+
+
+    # ========================================================
+    # SAL VISUALIZZATO
+    # ========================================================
+
+    sal_gantt = (
+        riepilogo["SAL"]
+    )
+
+
+    if (
+        pd.isna(sal_gantt)
+        and riepilogo_giorni[
+            "disponibile"
+        ]
+    ):
+
+        sal_visualizzato = (
+            riepilogo_giorni[
+                "pct_fatti"
+            ]
+        )
+
+    else:
+
+        sal_visualizzato = (
+            sal_gantt
+        )
+
+
+    # IMPORTANTE:
+    # nel dettaglio non ricalcoliamo lo stato dal SAL.
+    # Manteniamo lo stato ufficiale determinato dal GANTT.
+    stato_visualizzato = (
+        riepilogo["Stato"]
+    )
+
+
+    # ========================================================
+    # KPI PRINCIPALI
     # ========================================================
 
     p1, p2, p3, p4 = (
@@ -3438,11 +4250,9 @@ elif vista == "Dettaglio progetto":
 
 
     p1.metric(
-        "SAL",
+        "SAL progetto",
         formatta_percentuale(
-            riepilogo[
-                "SAL"
-            ]
+            sal_visualizzato
         ),
     )
 
@@ -3450,8 +4260,8 @@ elif vista == "Dettaglio progetto":
     p2.metric(
         "Giorni fatti",
         formatta_numero(
-            riepilogo[
-                "Fatto"
+            riepilogo_giorni[
+                "giorni_fatti"
             ]
         ),
     )
@@ -3460,8 +4270,8 @@ elif vista == "Dettaglio progetto":
     p3.metric(
         "Giorni da fare",
         formatta_numero(
-            riepilogo[
-                "Da fare"
+            riepilogo_giorni[
+                "giorni_da_fare"
             ]
         ),
     )
@@ -3469,14 +4279,155 @@ elif vista == "Dettaglio progetto":
 
     p4.metric(
         "Stato",
-        riepilogo[
-            "Stato"
-        ],
+        stato_visualizzato,
     )
 
 
     # ========================================================
-    # ANOMALIA PROGETTO
+    # KPI PERCENTUALI GIORNI
+    # ========================================================
+
+    q1, q2 = (
+        st.columns(2)
+    )
+
+
+    q1.metric(
+        "✅ Percentuale complessiva giorni fatti",
+        formatta_percentuale(
+            riepilogo_giorni[
+                "pct_fatti"
+            ]
+        ),
+    )
+
+
+    q2.metric(
+        "⏳ Percentuale complessiva giorni da fare",
+        formatta_percentuale(
+            riepilogo_giorni[
+                "pct_da_fare"
+            ]
+        ),
+    )
+
+
+    # ========================================================
+    # INFORMAZIONE CALCOLO GIORNI
+    # ========================================================
+
+    if riepilogo_giorni[
+        "disponibile"
+    ]:
+
+        st.caption(
+            "Calcolo effettuato su "
+            f"{formatta_numero(riepilogo_giorni['giorni_totali'])} "
+            "giorni complessivi "
+            f"({riepilogo_giorni['fonte']})."
+        )
+
+    else:
+
+        st.warning(
+            "Non è stato possibile individuare "
+            "una coppia valida di valori "
+            "'giorni fatti / giorni da fare' "
+            "nel SAL selezionato."
+        )
+
+
+    # ========================================================
+    # BARRA 100%
+    # ========================================================
+
+    if riepilogo_giorni[
+        "disponibile"
+    ]:
+
+        grafico_ripartizione_lavoro(
+            riepilogo_giorni[
+                "pct_fatti"
+            ],
+            riepilogo_giorni[
+                "pct_da_fare"
+            ],
+        )
+
+
+    # ========================================================
+    # CONTROLLO COERENZA SAL
+    # ========================================================
+
+    if (
+        pd.notna(sal_gantt)
+        and
+        riepilogo_giorni[
+            "disponibile"
+        ]
+    ):
+
+        sal_calcolato = (
+            riepilogo_giorni[
+                "pct_fatti"
+            ]
+        )
+
+
+        scostamento_coerenza = (
+            sal_gantt
+            - sal_calcolato
+        )
+
+
+        if (
+            abs(
+                scostamento_coerenza
+            )
+            > TOLLERANZA_COHERENZA_SAL
+        ):
+
+            st.warning(
+                "⚠️ Il SAL riportato nel GANTT "
+                "non coincide con il SAL calcolato "
+                "sui giorni del progetto. "
+                f"SAL GANTT: {formatta_percentuale(sal_gantt)} · "
+                f"SAL calcolato: {formatta_percentuale(sal_calcolato)} · "
+                f"Scostamento: "
+                f"{formatta_numero(scostamento_coerenza)} p.p."
+            )
+
+        else:
+
+            st.success(
+                "✓ SAL del GANTT coerente con "
+                "la percentuale calcolata sui giorni "
+                f"(scostamento "
+                f"{formatta_numero(scostamento_coerenza)} p.p.)."
+            )
+
+
+    # ========================================================
+    # STATO UFFICIALE GANTT
+    # ========================================================
+
+    if (
+        normalizza_testo(
+            riepilogo[
+                "Stato sorgente"
+            ]
+        )
+        != ""
+    ):
+
+        st.caption(
+            "Stato ufficiale nel GANTT: "
+            f"{riepilogo['Stato sorgente']}."
+        )
+
+
+    # ========================================================
+    # ANOMALIA SAL
     # ========================================================
 
     if bool(
@@ -3486,15 +4437,16 @@ elif vista == "Dettaglio progetto":
     ):
 
         st.warning(
-            "Il SAL sorgente è "
+            "Il valore SAL presente nel dato sorgente è "
             f"{formatta_percentuale(riepilogo['SAL sorgente'], 2)}. "
-            "La barra viene limitata a 100% "
-            "esclusivamente per la visualizzazione."
+            "La rappresentazione grafica viene limitata "
+            "a un massimo del 100%, senza modificare "
+            "il dato sorgente."
         )
 
 
     # ========================================================
-    # SCOSTAMENTO
+    # SAL ATTESO
     # ========================================================
 
     if pd.notna(
@@ -3523,100 +4475,16 @@ elif vista == "Dettaglio progetto":
 
 
     # ========================================================
-    # ASSOCIAZIONE AUTOMATICA FOGLIO SAL
+    # ATTIVITÀ
     # ========================================================
-
-    (
-        foglio_auto,
-        score
-    ) = (
-        trova_foglio_sal_migliore(
-            progetto,
-            team,
-            sheet_names,
-        )
-    )
-
-
-    candidati_sal = (
-        lista_fogli_sal(
-            sheet_names,
-            team
-        )
-    )
-
-
-    if not candidati_sal:
-
-        st.info(
-            "Non sono stati trovati "
-            f"fogli SAL compatibili "
-            f"con il team {team}."
-        )
-
-        st.stop()
-
-
-    default_idx = 0
-
-
-    if (
-        foglio_auto is not None
-        and
-        score >= 0.30
-    ):
-
-        default_idx = (
-            candidati_sal.index(
-                foglio_auto
-            )
-        )
-
-
-    foglio_sal = st.selectbox(
-        "Foglio SAL associato",
-        candidati_sal,
-        index=default_idx,
-        help=(
-            "La dashboard propone automaticamente "
-            "il foglio più compatibile con il nome "
-            "del progetto. La selezione può essere "
-            "corretta manualmente."
-        ),
-    )
-
-
-    if (
-        foglio_auto is not None
-        and
-        score >= 0.30
-    ):
-
-        st.caption(
-            "Associazione automatica proposta: "
-            f"{foglio_auto}"
-        )
-
-
-    # ========================================================
-    # LETTURA SAL
-    # ========================================================
-
-    df_sal = fogli[
-        foglio_sal
-    ]
-
 
     attivita = (
         costruisci_attivita(
-            df_sal
+            df_sal,
+            foglio_sal,
         )
     )
 
-
-    # ========================================================
-    # GRAFICO ATTIVITÀ
-    # ========================================================
 
     if not attivita.empty:
 
@@ -3696,13 +4564,12 @@ elif vista == "Dettaglio progetto":
                 "dall'intervallo 0–100%."
             )
 
-
     else:
 
         st.info(
             "Il foglio SAL selezionato "
             "non contiene una struttura "
-            "riconoscibile con attività e SAL."
+            "riconoscibile di attività."
         )
 
 
@@ -3731,16 +4598,26 @@ elif vista == "Dati sorgente":
     )
 
 
-    # I tre GANTT vengono proposti per primi.
-    preferiti = [
-        nome
-        for nome in [
-            GANTT_COMBINATO,
-            GANTT_EPAL,
-            GANTT_MGIO,
-        ]
-        if nome in sheet_names
-    ]
+    preferiti = []
+
+
+    if gantt_combinato_nome is not None:
+
+        preferiti.append(
+            gantt_combinato_nome
+        )
+
+
+    for nome in [
+        GANTT_EPAL,
+        GANTT_MGIO,
+    ]:
+
+        if nome in sheet_names:
+
+            preferiti.append(
+                nome
+            )
 
 
     altri = [
