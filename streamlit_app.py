@@ -131,7 +131,6 @@ def pulisci_testo_emoji(text):
     if not text or pd.isna(text):
         return ""
     text = str(text)
-    # Rimuove simboli, emoji e spunte
     text = re.sub(r"[^\w\s\(\)\+\&\.-]", " ", text)
     return text
 
@@ -140,7 +139,6 @@ def pulisci_nome_progetto_per_match(text):
     if not text or pd.isna(text):
         return ""
     text = pulisci_testo_emoji(text)
-    # Preserva (EPAL), (MGIO), (EPAL+MGIO) ma rimuove altre parentesi (es. ruoli o luoghi)
     def filtri_parentesi(match):
         inner = match.group(1).upper().replace(" ", "")
         if inner in ["EPAL", "MGIO", "EPAL+MGIO", "MGIO+EPAL"]:
@@ -537,9 +535,8 @@ def trova_colonne_giorni_sal(df, nome_foglio):
     if col_fatto is not None and col_da_fare is not None:
         return (col_fatto, col_da_fare, "intestazioni del foglio SAL")
 
-    tipo = tipo_sal_da_nome(nome_foglio)
-
-    if tipo in {"EPAL", "MGIO"} and len(df.columns) >= 9:
+    # Fallback universale sulle colonne H (indice 7) e I (indice 8)
+    if len(df.columns) >= 9:
         candidato_fatto = col_fatto if col_fatto is not None else df.columns[7]
         candidato_da_fare = col_da_fare if col_da_fare is not None else df.columns[8]
 
@@ -1215,70 +1212,27 @@ def arricchisci_portafoglio_con_giorni_sal(df, fogli, sheet_names):
 
     for idx in out.index:
         progetto = out.at[idx, "Progetto"]
-        team = normalizza_team(out.at[idx, "Team"]) if "Team" in out.columns else "N/D"
-
         fogli_match = trova_fogli_sal_per_progetto(progetto, sheet_names, fogli_esclusi=fogli_usati)
 
         giorni_fatti_tot = 0.0
         giorni_da_fare_tot = 0.0
         almeno_un_foglio_valido = False
+        fogli_trovati_ora = []
 
-        if team == "EPAL+MGIO":
-            foglio_epal = None
-            foglio_mgio = None
-            foglio_comb = None
-
-            for s_nome, score in fogli_match:
-                s_norm = normalizza_testo(s_nome)
-                if "(epal)" in s_norm and not foglio_epal:
-                    foglio_epal = s_nome
-                elif "(mgio)" in s_norm and not foglio_mgio:
-                    foglio_mgio = s_nome
-                elif ("(epal+mgio)" in s_norm or "(mgio+epal)" in s_norm) and not foglio_comb:
-                    foglio_comb = s_nome
-
-            fogli_da_sommare = []
-            if foglio_epal:
-                fogli_da_sommare.append(foglio_epal)
-            if foglio_mgio:
-                fogli_da_sommare.append(foglio_mgio)
-            if not fogli_da_sommare and foglio_comb:
-                fogli_da_sommare.append(foglio_comb)
-
-            if not fogli_da_sommare and fogli_match:
-                fogli_da_sommare = [fogli_match[0][0]]
-                if len(fogli_match) > 1 and fogli_match[1][1] >= 0.5:
-                    fogli_da_sommare.append(fogli_match[1][0])
-
-            for f_nome in fogli_da_sommare:
-                if f_nome in fogli:
-                    res = calcola_giorni_progetto(fogli[f_nome], f_nome)
-                    if res["disponibile"]:
-                        giorni_fatti_tot += res["giorni_fatti"]
-                        giorni_da_fare_tot += res["giorni_da_fare"]
-                        almeno_un_foglio_valido = True
-                        fogli_usati.add(f_nome)
-
-        else:
-            foglio_scelto = None
-            for s_nome, score in fogli_match:
-                if s_nome not in fogli_usati:
-                    foglio_scelto = s_nome
-                    break
-            if not foglio_scelto and fogli_match:
-                foglio_scelto = fogli_match[0][0]
-
-            if foglio_scelto and foglio_scelto in fogli:
-                res = calcola_giorni_progetto(fogli[foglio_scelto], foglio_scelto)
-                if res["disponibile"]:
-                    giorni_fatti_tot = res["giorni_fatti"]
-                    giorni_da_fare_tot = res["giorni_da_fare"]
+        for nome_foglio, score in fogli_match:
+            if nome_foglio in fogli:
+                riepilogo = calcola_giorni_progetto(fogli[nome_foglio], nome_foglio)
+                if riepilogo["disponibile"]:
+                    giorni_fatti_tot += riepilogo["giorni_fatti"]
+                    giorni_da_fare_tot += riepilogo["giorni_da_fare"]
                     almeno_un_foglio_valido = True
-                    fogli_usati.add(foglio_scelto)
+                    fogli_trovati_ora.append(nome_foglio)
 
         if almeno_un_foglio_valido:
             out.at[idx, "Fatto"] = giorni_fatti_tot
             out.at[idx, "Da fare"] = giorni_da_fare_tot
+            for f_nome in fogli_trovati_ora:
+                fogli_usati.add(f_nome)
         else:
             out.at[idx, "Fatto"] = float("nan")
             out.at[idx, "Da fare"] = float("nan")
