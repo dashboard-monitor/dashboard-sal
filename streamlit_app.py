@@ -122,9 +122,7 @@ st.markdown(
 
 def ora_italiana():
     try:
-        return datetime.now(
-            ZoneInfo("Europe/Rome")
-        )
+        return datetime.now(ZoneInfo("Europe/Rome"))
     except Exception:
         return datetime.now()
 
@@ -184,10 +182,7 @@ def tokenizza(value):
 
 def pulisci_dataframe(df):
     df = df.copy()
-    df.columns = [
-        str(c).strip()
-        for c in df.columns
-    ]
+    df.columns = [str(c).strip() for c in df.columns]
     df = df.dropna(how="all")
     return df
 
@@ -352,7 +347,6 @@ def trova_colonna(
     contains_any=None,
     exclude=None,
 ):
-
     exact = exact or []
     contains_all = contains_all or []
     contains_any = contains_any or []
@@ -570,7 +564,6 @@ def trova_colonne_giorni_sal(df, nome_foglio):
     if col_fatto is not None and col_da_fare is not None:
         return (col_fatto, col_da_fare, "intestazioni del foglio SAL")
 
-    # Estensione lettura colonne H (7) e I (8) a tutti i fogli SAL
     if len(df.columns) >= 9:
         candidato_fatto = col_fatto if col_fatto is not None else df.columns[7]
         candidato_da_fare = col_da_fare if col_da_fare is not None else df.columns[8]
