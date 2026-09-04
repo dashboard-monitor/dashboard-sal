@@ -156,13 +156,6 @@ def normalizza_testo(value):
 
 
 def chiave_progetto(value):
-    """
-    Costruisce la chiave utilizzata per stabilire
-    se due righe rappresentano lo stesso progetto.
-
-    Differenze di maiuscole/minuscole, accenti,
-    punteggiatura e spazi non producono progetti distinti.
-    """
 
     text = normalizza_testo(value)
 
@@ -216,8 +209,8 @@ def pulisci_dataframe(df):
         for c in df.columns
     ]
 
-    # Non vengono eliminate le colonne Unnamed,
-    # perché nei SAL individuali servono a preservare
+    # Non vengono eliminate le colonne Unnamed:
+    # nei SAL individuali servono a preservare
     # le posizioni fisiche delle colonne H:I.
 
     df = df.dropna(
@@ -301,15 +294,6 @@ def serie_numerica(serie):
 # ============================================================
 
 def percentuale_da_excel(serie):
-    """
-    Esempi:
-
-    0.5993 -> 59.93
-    0.8055 -> 80.55
-    0.9850 -> 98.50
-    1.0000 -> 100.00
-    1.1332 -> 113.32
-    """
 
     valori = []
     gia_percentuali = []
@@ -449,7 +433,10 @@ def ordina_portafoglio(
 
         return out.sort_values(
             ["SAL", "Progetto"],
-            ascending=[True, True],
+            ascending=[
+                True,
+                True
+            ],
             na_position="last",
         )
 
@@ -457,7 +444,10 @@ def ordina_portafoglio(
 
         return out.sort_values(
             ["SAL", "Progetto"],
-            ascending=[False, True],
+            ascending=[
+                False,
+                True
+            ],
             na_position="last",
         )
 
@@ -804,6 +794,40 @@ def trova_colonna_team(df):
 
 
 # ============================================================
+# STATO SORGENTE
+# ============================================================
+
+def stato_sorgente_e_completo(value):
+
+    if value is None:
+        return False
+
+    if pd.isna(value):
+        return False
+
+    stato = normalizza_testo(
+        value
+    )
+
+    stati_completati = {
+        "completo",
+        "completato",
+        "completed",
+        "chiuso",
+        "concluso",
+        "terminato",
+        "finito",
+    }
+
+    return (
+        stato in stati_completati
+        or stato.startswith(
+            "complet"
+        )
+    )
+
+
+# ============================================================
 # STATO UFFICIALE PROGETTO
 # ============================================================
 
@@ -811,28 +835,18 @@ def normalizza_stato_progetto(
     stato_sorgente,
     sal
 ):
+    """
+    REGOLA PRINCIPALE:
 
-    if stato_sorgente is not None:
+    Lo stato COMPLETO presente nel GANTT
+    prevale sempre sul valore numerico del SAL.
+    """
 
-        stato = normalizza_testo(
-            stato_sorgente
-        )
+    if stato_sorgente_e_completo(
+        stato_sorgente
+    ):
 
-        stati_completati = {
-            "completo",
-            "completato",
-            "completed",
-            "chiuso",
-            "concluso",
-            "terminato",
-            "finito",
-        }
-
-        if (
-            stato in stati_completati
-            or stato.startswith("complet")
-        ):
-            return "Completato"
+        return "Completato"
 
     return stato_da_sal(
         sal
@@ -1091,9 +1105,12 @@ def calcola_giorni_progetto(
 
         return {
             **risultato_vuoto,
-            "giorni_fatti": tot_fatto,
-            "giorni_da_fare": tot_da_fare,
-            "giorni_totali": totale,
+            "giorni_fatti":
+                tot_fatto,
+            "giorni_da_fare":
+                tot_da_fare,
+            "giorni_totali":
+                totale,
         }
 
     pct_fatti = (
@@ -1141,7 +1158,8 @@ def calcola_giorni_da_gantt(
     )
 
     totale = (
-        fatto + da_fare
+        fatto
+        + da_fare
     )
 
     if totale <= 0:
@@ -1152,13 +1170,12 @@ def calcola_giorni_da_gantt(
         "giorni_fatti": fatto,
         "giorni_da_fare": da_fare,
         "giorni_totali": totale,
-        "pct_fatti": (
-            fatto / totale
-        ) * 100,
-        "pct_da_fare": (
-            da_fare / totale
-        ) * 100,
-        "fonte": "GANTT del progetto",
+        "pct_fatti":
+            (fatto / totale) * 100,
+        "pct_da_fare":
+            (da_fare / totale) * 100,
+        "fonte":
+            "GANTT del progetto",
     }
 
 
@@ -1180,6 +1197,7 @@ def check_password():
     if st.session_state[
         "password_correct"
     ]:
+
         return True
 
     st.title(
@@ -1425,7 +1443,7 @@ def costruisci_portafoglio(
         )
 
     # --------------------------------------------------------
-    # SAL
+    # SAL SORGENTE
     # --------------------------------------------------------
 
     if col_sal is not None:
@@ -1455,6 +1473,10 @@ def costruisci_portafoglio(
             )
             * 100
         )
+
+    # --------------------------------------------------------
+    # SAL VISUALIZZATO
+    # --------------------------------------------------------
 
     out["SAL"] = (
         out["SAL sorgente"]
@@ -1506,7 +1528,7 @@ def costruisci_portafoglio(
         out["Stato sorgente"] = ""
 
     # --------------------------------------------------------
-    # STATO GESTIONALE
+    # STATO DASHBOARD
     # --------------------------------------------------------
 
     out["Stato"] = [
@@ -1593,11 +1615,6 @@ def normalizza_team(value):
 
 
 def team_da_insieme(teams):
-    """
-    Restituisce il team consolidato.
-
-    EPAL + MGIO -> EPAL+MGIO
-    """
 
     teams = {
         team
@@ -1634,15 +1651,6 @@ def costruisci_portafoglio_combinato(
     portfolio_mgio,
     source_sheet,
 ):
-    """
-    Costruisce il GANTT complessivo.
-
-    In questa fase assegna correttamente EPAL, MGIO
-    o EPAL+MGIO.
-
-    Il consolidamento a una sola riga per progetto
-    viene effettuato successivamente.
-    """
 
     base = costruisci_portafoglio(
         df,
@@ -1655,7 +1663,9 @@ def costruisci_portafoglio_combinato(
 
     if (
         not portfolio_epal.empty
-        and "Progetto" in portfolio_epal.columns
+        and
+        "Progetto"
+        in portfolio_epal.columns
     ):
 
         epal_keys = set(
@@ -1673,7 +1683,9 @@ def costruisci_portafoglio_combinato(
 
     if (
         not portfolio_mgio.empty
-        and "Progetto" in portfolio_mgio.columns
+        and
+        "Progetto"
+        in portfolio_mgio.columns
     ):
 
         mgio_keys = set(
@@ -1697,8 +1709,6 @@ def costruisci_portafoglio_combinato(
         df
     )
 
-    # Ogni progetto può comparire più volte.
-    # Per questo il dizionario contiene un set di team.
     team_map = {}
 
     if (
@@ -1740,8 +1750,10 @@ def costruisci_portafoglio_combinato(
 
         if key in team_map:
 
-            team_specifico = team_da_insieme(
-                team_map[key]
+            team_specifico = (
+                team_da_insieme(
+                    team_map[key]
+                )
             )
 
             if team_specifico != "N/D":
@@ -1782,22 +1794,14 @@ def costruisci_portafoglio_combinato(
 
 def consolida_progetti_univoci(df):
     """
-    Trasforma un portafoglio eventualmente contenente
-    più righe per lo stesso progetto in un portafoglio
-    con UNA SOLA riga per progetto MiniPIA.
+    Una sola riga per ciascun progetto MiniPIA distinto.
 
-    La chiave utilizzata è il nome normalizzato del progetto.
+    REGOLA STATO:
+    se almeno una riga sorgente del progetto riporta
+    uno stato equivalente a COMPLETO, lo stato
+    consolidato è COMpletato.
 
-    Regole:
-    - una sola occorrenza -> dati invariati;
-    - EPAL + MGIO -> Team = EPAL+MGIO;
-    - giorni -> somma delle occorrenze;
-    - SAL -> ponderato sui giorni se disponibili;
-      altrimenti media dei SAL sorgente;
-    - Completato -> solo se tutte le occorrenze
-      del progetto risultano completate;
-    - anomalie -> mantenute se presenti
-      in almeno una delle occorrenze.
+    Lo stato sorgente prevale quindi sul SAL numerico.
     """
 
     if (
@@ -1808,7 +1812,9 @@ def consolida_progetti_univoci(df):
 
     temp = df.copy()
 
-    temp["Chiave progetto"] = (
+    temp[
+        "Chiave progetto"
+    ] = (
         temp["Progetto"]
         .map(
             chiave_progetto
@@ -1842,7 +1848,8 @@ def consolida_progetti_univoci(df):
 
         nomi_validi = [
             str(x).strip()
-            for x in gruppo[
+            for x
+            in gruppo[
                 "Progetto"
             ].tolist()
             if pd.notna(x)
@@ -1861,7 +1868,8 @@ def consolida_progetti_univoci(df):
 
         teams = {
             str(x).strip()
-            for x in gruppo[
+            for x
+            in gruppo[
                 "Team"
             ].tolist()
             if pd.notna(x)
@@ -1880,7 +1888,8 @@ def consolida_progetti_univoci(df):
                 gruppo["Fatto"],
                 errors="coerce",
             )
-            if "Fatto" in gruppo.columns
+            if "Fatto"
+            in gruppo.columns
             else pd.Series(
                 dtype=float
             )
@@ -1891,7 +1900,8 @@ def consolida_progetti_univoci(df):
                 gruppo["Da fare"],
                 errors="coerce",
             )
-            if "Da fare" in gruppo.columns
+            if "Da fare"
+            in gruppo.columns
             else pd.Series(
                 dtype=float
             )
@@ -1909,7 +1919,9 @@ def consolida_progetti_univoci(df):
                 fatto_series.loc[
                     validi_giorni
                 ]
-                .clip(lower=0)
+                .clip(
+                    lower=0
+                )
                 .sum()
             )
 
@@ -1917,12 +1929,15 @@ def consolida_progetti_univoci(df):
                 da_fare_series.loc[
                     validi_giorni
                 ]
-                .clip(lower=0)
+                .clip(
+                    lower=0
+                )
                 .sum()
             )
 
             totale_giorni = (
-                fatto + da_fare
+                fatto
+                + da_fare
             )
 
         else:
@@ -1932,11 +1947,49 @@ def consolida_progetti_univoci(df):
             totale_giorni = float("nan")
 
         # ----------------------------------------------------
-        # SAL CONSOLIDATO
+        # SAL SORGENTE
+        # ----------------------------------------------------
+        #
+        # Se esiste una sola riga, il dato sorgente
+        # viene mantenuto esattamente.
+        #
+        # Se esistono più righe per lo stesso progetto,
+        # viene utilizzata la media dei SAL sorgente.
+        #
+        # Questo evita che eventuali valori anomali
+        # come 113,32% vengano nascosti.
         # ----------------------------------------------------
 
-        if (
-            pd.notna(totale_giorni)
+        sal_values = (
+            pd.to_numeric(
+                gruppo[
+                    "SAL sorgente"
+                ],
+                errors="coerce",
+            )
+            .dropna()
+        )
+
+        if not sal_values.empty:
+
+            if len(
+                sal_values
+            ) == 1:
+
+                sal_sorgente = (
+                    sal_values.iloc[0]
+                )
+
+            else:
+
+                sal_sorgente = (
+                    sal_values.mean()
+                )
+
+        elif (
+            pd.notna(
+                totale_giorni
+            )
             and totale_giorni > 0
         ):
 
@@ -1948,43 +2001,29 @@ def consolida_progetti_univoci(df):
 
         else:
 
-            sal_values = (
+            sal_values_visualizzati = (
                 pd.to_numeric(
-                    gruppo[
-                        "SAL sorgente"
-                    ],
+                    gruppo["SAL"],
                     errors="coerce",
                 )
                 .dropna()
             )
 
-            if not sal_values.empty:
+            if not sal_values_visualizzati.empty:
 
                 sal_sorgente = (
-                    sal_values.mean()
+                    sal_values_visualizzati.mean()
                 )
 
             else:
 
-                sal_values = (
-                    pd.to_numeric(
-                        gruppo["SAL"],
-                        errors="coerce",
-                    )
-                    .dropna()
+                sal_sorgente = float(
+                    "nan"
                 )
 
-                if not sal_values.empty:
-
-                    sal_sorgente = (
-                        sal_values.mean()
-                    )
-
-                else:
-
-                    sal_sorgente = float(
-                        "nan"
-                    )
+        # ----------------------------------------------------
+        # SAL VISUALIZZATO
+        # ----------------------------------------------------
 
         if pd.notna(
             sal_sorgente
@@ -2007,7 +2046,7 @@ def consolida_progetti_univoci(df):
             )
 
         # ----------------------------------------------------
-        # ANOMALIA
+        # ANOMALIA SAL
         # ----------------------------------------------------
 
         anomalie_originali = False
@@ -2042,53 +2081,6 @@ def consolida_progetti_univoci(df):
         )
 
         # ----------------------------------------------------
-        # STATO CONSOLIDATO
-        # ----------------------------------------------------
-
-        stati = [
-            str(x).strip()
-            for x in gruppo[
-                "Stato"
-            ].tolist()
-            if pd.notna(x)
-            and str(x).strip()
-        ]
-
-        # Se il progetto compare in più portafogli,
-        # viene dichiarato completato soltanto quando
-        # tutte le occorrenze risultano completate.
-        if (
-            stati
-            and all(
-                stato == "Completato"
-                for stato in stati
-            )
-        ):
-
-            stato = "Completato"
-
-        else:
-
-            stato = stato_da_sal(
-                sal
-            )
-
-            # Evita che un SAL matematico al 100%
-            # determini "Completato" quando esistono
-            # occorrenze esplicitamente non complete.
-            if (
-                len(gruppo) > 1
-                and stato == "Completato"
-                and stati
-                and not all(
-                    x == "Completato"
-                    for x in stati
-                )
-            ):
-
-                stato = "In stato avanzato"
-
-        # ----------------------------------------------------
         # STATO SORGENTE
         # ----------------------------------------------------
 
@@ -2112,8 +2104,10 @@ def consolida_progetti_univoci(df):
 
                 if (
                     text
-                    and text not in stati_sorgente
+                    and
+                    text not in stati_sorgente
                 ):
+
                     stati_sorgente.append(
                         text
                     )
@@ -2123,6 +2117,39 @@ def consolida_progetti_univoci(df):
                 stati_sorgente
             )
         )
+
+        # ----------------------------------------------------
+        # STATO CONSOLIDATO
+        # ----------------------------------------------------
+        #
+        # REGOLA DEFINITIVA:
+        #
+        # lo STATO sorgente del GANTT prevale
+        # sul valore percentuale del SAL.
+        #
+        # Se almeno uno stato sorgente indica
+        # COMPLETO, il progetto è Completato.
+        # ----------------------------------------------------
+
+        completo_da_sorgente = any(
+            stato_sorgente_e_completo(
+                value
+            )
+            for value
+            in gruppo[
+                "Stato sorgente"
+            ].tolist()
+        )
+
+        if completo_da_sorgente:
+
+            stato = "Completato"
+
+        else:
+
+            stato = stato_da_sal(
+                sal
+            )
 
         # ----------------------------------------------------
         # SAL ATTESO
@@ -2155,7 +2182,8 @@ def consolida_progetti_univoci(df):
 
         if (
             pd.notna(sal)
-            and pd.notna(
+            and
+            pd.notna(
                 sal_atteso
             )
         ):
@@ -2195,7 +2223,8 @@ def consolida_progetti_univoci(df):
 
                 if (
                     text
-                    and text not in fogli_origine
+                    and
+                    text not in fogli_origine
                 ):
 
                     fogli_origine.append(
@@ -2299,20 +2328,24 @@ def portfolio_sal(df):
         )
 
         totale = (
-            fatto + residuo
+            fatto
+            + residuo
         )
 
         if totale > 0:
 
             return (
                 (
-                    fatto / totale
+                    fatto
+                    / totale
                 )
                 * 100,
                 "ponderato sui giorni"
             )
 
-    if df["SAL"].notna().any():
+    if df[
+        "SAL"
+    ].notna().any():
 
         return (
             df["SAL"].mean(),
@@ -2339,7 +2372,9 @@ def aggiungi_flag_condiviso(
 
     if (
         not portfolio_epal.empty
-        and "Progetto" in portfolio_epal.columns
+        and
+        "Progetto"
+        in portfolio_epal.columns
     ):
 
         epal_keys = set(
@@ -2357,7 +2392,9 @@ def aggiungi_flag_condiviso(
 
     if (
         not portfolio_mgio.empty
-        and "Progetto" in portfolio_mgio.columns
+        and
+        "Progetto"
+        in portfolio_mgio.columns
     ):
 
         mgio_keys = set(
@@ -2646,15 +2683,21 @@ def costruisci_attivita(
         }
     )
 
-    out["Attività"] = (
-        out["Attività"]
+    out[
+        "Attività"
+    ] = (
+        out[
+            "Attività"
+        ]
         .astype(str)
         .str.strip()
     )
 
-    mask = mask_righe_attivita_valide(
-        df,
-        col_attivita
+    mask = (
+        mask_righe_attivita_valide(
+            df,
+            col_attivita
+        )
     )
 
     out = out.loc[
@@ -2672,7 +2715,9 @@ def costruisci_attivita(
                     col_fatto
                 ]
             )
-            .clip(lower=0)
+            .clip(
+                lower=0
+            )
         )
 
     else:
@@ -2690,7 +2735,9 @@ def costruisci_attivita(
                     col_da_fare
                 ]
             )
-            .clip(lower=0)
+            .clip(
+                lower=0
+            )
         )
 
     else:
@@ -2701,7 +2748,9 @@ def costruisci_attivita(
 
     if col_sal is not None:
 
-        out["SAL sorgente"] = (
+        out[
+            "SAL sorgente"
+        ] = (
             percentuale_da_excel(
                 df.loc[
                     indici,
@@ -2717,7 +2766,9 @@ def costruisci_attivita(
             + out["Da fare"]
         )
 
-        out["SAL sorgente"] = (
+        out[
+            "SAL sorgente"
+        ] = (
             out["Fatto"]
             .div(
                 denominatore.where(
@@ -2728,20 +2779,28 @@ def costruisci_attivita(
         )
 
     out["SAL"] = (
-        out["SAL sorgente"]
+        out[
+            "SAL sorgente"
+        ]
         .clip(
             lower=0,
             upper=100
         )
     )
 
-    out["Anomalia SAL"] = (
+    out[
+        "Anomalia SAL"
+    ] = (
         (
-            out["SAL sorgente"] < 0
+            out[
+                "SAL sorgente"
+            ] < 0
         )
         |
         (
-            out["SAL sorgente"] > 100
+            out[
+                "SAL sorgente"
+            ] > 100
         )
     )
 
@@ -2852,9 +2911,12 @@ def grafico_ranking(
             "Anomalia SAL",
         ],
         labels={
-            "SAL": "Avanzamento",
-            "Progetto": "",
-            "Stato": "Stato",
+            "SAL":
+                "Avanzamento",
+            "Progetto":
+                "",
+            "Stato":
+                "Stato",
         },
         title=titolo,
     )
@@ -2874,7 +2936,8 @@ def grafico_ranking(
         ),
         ticktext=[
             f"{x}%"
-            for x in range(
+            for x
+            in range(
                 0,
                 101,
                 10
@@ -2894,7 +2957,9 @@ def grafico_ranking(
     fig.update_layout(
         height=max(
             430,
-            len(plot_df) * 38
+            len(
+                plot_df
+            ) * 38
         ),
         margin=dict(
             l=20,
@@ -3027,7 +3092,8 @@ def grafico_confronto_team(df):
 
         team_df = df[
             (
-                df["Team"] == team
+                df["Team"]
+                == team
             )
             &
             (
@@ -3039,35 +3105,38 @@ def grafico_confronto_team(df):
         if team_df.empty:
             continue
 
-        sal, metodo = portfolio_sal(
-            team_df
+        sal, metodo = (
+            portfolio_sal(
+                team_df
+            )
         )
 
         righe.append(
             {
                 "Team":
                     team,
-
                 "SAL":
                     sal,
-
                 "Metodo":
                     metodo,
-
                 "Progetti in corso":
-                    len(team_df),
+                    len(
+                        team_df
+                    ),
             }
         )
 
-    confronto = pd.DataFrame(
-        righe
+    confronto = (
+        pd.DataFrame(
+            righe
+        )
     )
 
     if confronto.empty:
 
         st.info(
-            "Confronto dei progetti in corso "
-            "non disponibile."
+            "Confronto dei progetti "
+            "in corso non disponibile."
         )
 
         return
@@ -3092,13 +3161,14 @@ def grafico_confronto_team(df):
             "Progetti in corso",
         ],
         title=(
-            "Confronto SAL progetti in corso "
-            "per portafoglio"
+            "Confronto SAL progetti "
+            "in corso per portafoglio"
         ),
         labels={
             "SAL":
                 "SAL progetti in corso",
-            "Team": "",
+            "Team":
+                "",
         },
     )
 
@@ -3172,19 +3242,23 @@ def grafico_reale_atteso(df):
 
     validi[
         "SAL reale"
-    ] = validi["SAL"]
+    ] = validi[
+        "SAL"
+    ]
 
-    long_df = validi.melt(
-        id_vars=[
-            "Progetto",
-            "Team",
-        ],
-        value_vars=[
-            "SAL reale",
-            "SAL atteso",
-        ],
-        var_name="Metrica",
-        value_name="Percentuale",
+    long_df = (
+        validi.melt(
+            id_vars=[
+                "Progetto",
+                "Team",
+            ],
+            value_vars=[
+                "SAL reale",
+                "SAL atteso",
+            ],
+            var_name="Metrica",
+            value_name="Percentuale",
+        )
     )
 
     fig = px.bar(
@@ -3198,8 +3272,10 @@ def grafico_reale_atteso(df):
             "SAL reale vs SAL atteso"
         ),
         labels={
-            "Percentuale": "SAL",
-            "Progetto": "",
+            "Percentuale":
+                "SAL",
+            "Progetto":
+                "",
         },
         custom_data=[
             "Team"
@@ -3220,7 +3296,8 @@ def grafico_reale_atteso(df):
         ),
         ticktext=[
             f"{x}%"
-            for x in range(
+            for x
+            in range(
                 0,
                 101,
                 10
@@ -3231,7 +3308,9 @@ def grafico_reale_atteso(df):
     fig.update_layout(
         height=max(
             430,
-            len(validi) * 50
+            len(
+                validi
+            ) * 50
         ),
         margin=dict(
             l=20,
@@ -3301,9 +3380,12 @@ def grafico_attivita(
             f"{progetto}"
         ),
         labels={
-            "SAL": "SAL",
-            "Attività": "",
-            "Stato": "Stato",
+            "SAL":
+                "SAL",
+            "Attività":
+                "",
+            "Stato":
+                "Stato",
         },
     )
 
@@ -3321,7 +3403,8 @@ def grafico_attivita(
         ),
         ticktext=[
             f"{x}%"
-            for x in range(
+            for x
+            in range(
                 0,
                 101,
                 10
@@ -3336,7 +3419,9 @@ def grafico_attivita(
     fig.update_layout(
         height=max(
             430,
-            len(plot_df) * 40
+            len(
+                plot_df
+            ) * 40
         ),
         margin=dict(
             l=20,
@@ -3367,7 +3452,7 @@ def grafico_attivita(
 
 
 # ============================================================
-# BARRA 100% FATTO / DA FARE
+# BARRA FATTO / DA FARE
 # ============================================================
 
 def grafico_ripartizione_lavoro(
@@ -3376,8 +3461,13 @@ def grafico_ripartizione_lavoro(
 ):
 
     if (
-        pd.isna(pct_fatti)
-        or pd.isna(pct_da_fare)
+        pd.isna(
+            pct_fatti
+        )
+        or
+        pd.isna(
+            pct_da_fare
+        )
     ):
         return
 
@@ -3428,9 +3518,12 @@ def grafico_ripartizione_lavoro(
             "del lavoro"
         ),
         labels={
-            "Percentuale": "",
-            "Voce": "",
-            "Stato": "",
+            "Percentuale":
+                "",
+            "Voce":
+                "",
+            "Stato":
+                "",
         },
     )
 
@@ -3516,10 +3609,14 @@ def tabella_portafoglio(df):
     ]
 
     if (
-        "SAL atteso" in df.columns
-        and df[
+        "SAL atteso"
+        in df.columns
+        and
+        df[
             "SAL atteso"
-        ].notna().any()
+        ]
+        .notna()
+        .any()
     ):
 
         colonne += [
@@ -3559,7 +3656,10 @@ def tabella_portafoglio(df):
             ),
     }
 
-    if "SAL atteso" in tabella.columns:
+    if (
+        "SAL atteso"
+        in tabella.columns
+    ):
 
         configurazione[
             "SAL atteso"
@@ -3784,13 +3884,7 @@ else:
 
 
 # ============================================================
-# CONCATENAZIONE EPAL + MGIO
-# ============================================================
-#
-# Serve esclusivamente come fallback.
-#
-# Anche nel fallback il risultato verrà poi consolidato
-# per progetto univoco.
+# FALLBACK EPAL + MGIO
 # ============================================================
 
 portfolio_concat = pd.concat(
@@ -3830,12 +3924,7 @@ else:
 # PORTAFOGLIO TUTTI - EPAL+MGIO
 # ============================================================
 #
-# REGOLA:
-# una sola riga per ciascun progetto MiniPIA distinto.
-#
-# Il GANTT combinato viene utilizzato come fonte primaria.
-# Se non è disponibile viene utilizzata la concatenazione
-# EPAL + MGIO, anch'essa consolidata.
+# Una sola riga per ogni progetto MiniPIA distinto.
 # ============================================================
 
 if not portfolio_da_gantt_combinato.empty:
@@ -4275,7 +4364,10 @@ if vista == "Executive":
         ],
         index=1,
         horizontal=True,
-        key=f"ordinamento_executive_{scope}",
+        key=(
+            f"ordinamento_executive_"
+            f"{scope}"
+        ),
     )
 
 
@@ -4294,7 +4386,9 @@ if vista == "Executive":
     grafico_ranking(
         portfolio_filtrato,
         "Avanzamento dei progetti",
-        ordinamento=ordinamento_executive,
+        ordinamento=(
+            ordinamento_executive
+        ),
     )
 
 
@@ -4316,7 +4410,10 @@ if vista == "Executive":
 
     with col_right:
 
-        if scope == "Tutti - EPAL+MGIO":
+        if (
+            scope
+            == "Tutti - EPAL+MGIO"
+        ):
 
             grafico_confronto_team(
                 portfolio_filtrato
@@ -4374,8 +4471,12 @@ if vista == "Executive":
 
 
                 fig.update_traces(
-                    texttemplate="%{text:.1f}",
-                    textposition="outside",
+                    texttemplate=(
+                        "%{text:.1f}"
+                    ),
+                    textposition=(
+                        "outside"
+                    ),
                 )
 
 
@@ -4401,9 +4502,10 @@ if vista == "Executive":
 
                 st.info(
                     "I giorni fatti / da fare "
-                    "non sono disponibili nel GANTT "
-                    "di portafoglio. Sono comunque "
-                    "calcolati nei singoli fogli SAL."
+                    "non sono disponibili nel "
+                    "GANTT di portafoglio. "
+                    "Sono comunque calcolati "
+                    "nei singoli fogli SAL."
                 )
 
 
@@ -4570,7 +4672,10 @@ elif vista == "Avanzamento":
         ],
         index=1,
         horizontal=True,
-        key=f"ordinamento_avanzamento_{scope}",
+        key=(
+            f"ordinamento_avanzamento_"
+            f"{scope}"
+        ),
     )
 
 
@@ -4587,10 +4692,6 @@ elif vista == "Avanzamento":
     )
 
 
-    # ========================================================
-    # RANKING
-    # ========================================================
-
     grafico_ranking(
         avanzamento,
         "Ranking SAL",
@@ -4603,18 +4704,10 @@ elif vista == "Avanzamento":
     )
 
 
-    # ========================================================
-    # TABELLA
-    # ========================================================
-
     tabella_portafoglio(
         avanzamento_ordinato
     )
 
-
-    # ========================================================
-    # SAL REALE VS ATTESO
-    # ========================================================
 
     if (
         "SAL atteso"
@@ -4650,10 +4743,6 @@ elif vista == "Dettaglio progetto":
 
         st.stop()
 
-
-    # ========================================================
-    # SELEZIONE PROGETTO
-    # ========================================================
 
     options = (
         portfolio[
@@ -4738,7 +4827,8 @@ elif vista == "Dettaglio progetto":
     if righe_progetto.empty:
 
         st.warning(
-            "Dati del progetto non disponibili."
+            "Dati del progetto "
+            "non disponibili."
         )
 
         st.stop()
@@ -4748,10 +4838,6 @@ elif vista == "Dettaglio progetto":
         righe_progetto.iloc[0]
     )
 
-
-    # ========================================================
-    # ASSOCIAZIONE AUTOMATICA SAL
-    # ========================================================
 
     (
         foglio_auto,
@@ -4771,8 +4857,6 @@ elif vista == "Dettaglio progetto":
     )
 
 
-    # Per i progetti condivisi, se non esiste un SAL
-    # combinato, vengono considerati tutti i SAL disponibili.
     if not candidati_sal:
 
         candidati_sal = (
@@ -4808,7 +4892,9 @@ elif vista == "Dettaglio progetto":
 
     if (
         foglio_auto is not None
-        and foglio_auto in candidati_sal
+        and
+        foglio_auto
+        in candidati_sal
     ):
 
         default_idx = (
@@ -4823,9 +4909,10 @@ elif vista == "Dettaglio progetto":
         candidati_sal,
         index=default_idx,
         help=(
-            "La dashboard associa automaticamente "
-            "il foglio SAL più compatibile con "
-            "il progetto. È possibile modificare "
+            "La dashboard associa "
+            "automaticamente il foglio SAL "
+            "più compatibile con il progetto. "
+            "È possibile modificare "
             "manualmente la selezione."
         ),
     )
@@ -4833,7 +4920,8 @@ elif vista == "Dettaglio progetto":
 
     if (
         foglio_auto is not None
-        and score >= 0.30
+        and
+        score >= 0.30
     ):
 
         st.caption(
@@ -4850,10 +4938,6 @@ elif vista == "Dettaglio progetto":
         )
 
 
-    # ========================================================
-    # DATI SAL
-    # ========================================================
-
     df_sal = fogli[
         foglio_sal
     ]
@@ -4867,18 +4951,18 @@ elif vista == "Dettaglio progetto":
     )
 
 
-    # ========================================================
-    # FALLBACK GIORNI DAL GANTT
-    # ========================================================
-
     if not riepilogo_giorni[
         "disponibile"
     ]:
 
         fallback_gantt = (
             calcola_giorni_da_gantt(
-                riepilogo["Fatto"],
-                riepilogo["Da fare"],
+                riepilogo[
+                    "Fatto"
+                ],
+                riepilogo[
+                    "Da fare"
+                ],
             )
         )
 
@@ -4889,18 +4973,17 @@ elif vista == "Dettaglio progetto":
             )
 
 
-    # ========================================================
-    # SAL VISUALIZZATO
-    # ========================================================
-
     sal_gantt = (
         riepilogo["SAL"]
     )
 
 
     if (
-        pd.isna(sal_gantt)
-        and riepilogo_giorni[
+        pd.isna(
+            sal_gantt
+        )
+        and
+        riepilogo_giorni[
             "disponibile"
         ]
     ):
@@ -4919,13 +5002,11 @@ elif vista == "Dettaglio progetto":
 
 
     stato_visualizzato = (
-        riepilogo["Stato"]
+        riepilogo[
+            "Stato"
+        ]
     )
 
-
-    # ========================================================
-    # KPI PRINCIPALI
-    # ========================================================
 
     p1, p2, p3, p4 = (
         st.columns(4)
@@ -4965,10 +5046,6 @@ elif vista == "Dettaglio progetto":
         stato_visualizzato,
     )
 
-
-    # ========================================================
-    # KPI PERCENTUALI GIORNI
-    # ========================================================
 
     q1, q2 = (
         st.columns(2)
@@ -5016,10 +5093,6 @@ elif vista == "Dettaglio progetto":
         )
 
 
-    # ========================================================
-    # BARRA 100%
-    # ========================================================
-
     if riepilogo_giorni[
         "disponibile"
     ]:
@@ -5034,12 +5107,10 @@ elif vista == "Dettaglio progetto":
         )
 
 
-    # ========================================================
-    # CONTROLLO COERENZA SAL
-    # ========================================================
-
     if (
-        pd.notna(sal_gantt)
+        pd.notna(
+            sal_gantt
+        )
         and
         riepilogo_giorni[
             "disponibile"
@@ -5063,15 +5134,18 @@ elif vista == "Dettaglio progetto":
             abs(
                 scostamento_coerenza
             )
-            > TOLLERANZA_COHERENZA_SAL
+            >
+            TOLLERANZA_COHERENZA_SAL
         ):
 
             st.warning(
                 "⚠️ Il SAL riportato nel GANTT "
                 "non coincide con il SAL calcolato "
                 "sui giorni del progetto. "
-                f"SAL GANTT: {formatta_percentuale(sal_gantt)} · "
-                f"SAL calcolato: {formatta_percentuale(sal_calcolato)} · "
+                f"SAL GANTT: "
+                f"{formatta_percentuale(sal_gantt)} · "
+                f"SAL calcolato: "
+                f"{formatta_percentuale(sal_calcolato)} · "
                 f"Scostamento: "
                 f"{formatta_numero(scostamento_coerenza)} p.p."
             )
@@ -5079,16 +5153,13 @@ elif vista == "Dettaglio progetto":
         else:
 
             st.success(
-                "✓ SAL del GANTT coerente con "
-                "la percentuale calcolata sui giorni "
+                "✓ SAL del GANTT coerente "
+                "con la percentuale calcolata "
+                "sui giorni "
                 f"(scostamento "
                 f"{formatta_numero(scostamento_coerenza)} p.p.)."
             )
 
-
-    # ========================================================
-    # STATO UFFICIALE GANTT
-    # ========================================================
 
     if (
         normalizza_testo(
@@ -5105,10 +5176,6 @@ elif vista == "Dettaglio progetto":
         )
 
 
-    # ========================================================
-    # ANOMALIA SAL
-    # ========================================================
-
     if bool(
         riepilogo[
             "Anomalia SAL"
@@ -5116,21 +5183,21 @@ elif vista == "Dettaglio progetto":
     ):
 
         st.warning(
-            "Il valore SAL presente nel dato sorgente è "
+            "Il valore SAL presente nel "
+            "dato sorgente è "
             f"{formatta_percentuale(riepilogo['SAL sorgente'], 2)}. "
-            "La rappresentazione grafica viene limitata "
-            "a un massimo del 100%, senza modificare "
+            "La rappresentazione grafica "
+            "viene limitata a un massimo "
+            "del 100%, senza modificare "
             "il dato sorgente."
         )
 
 
-    # ========================================================
-    # SAL ATTESO
-    # ========================================================
-
     if (
-        "SAL atteso" in riepilogo.index
-        and pd.notna(
+        "SAL atteso"
+        in riepilogo.index
+        and
+        pd.notna(
             riepilogo[
                 "SAL atteso"
             ]
@@ -5145,7 +5212,8 @@ elif vista == "Dettaglio progetto":
 
 
         st.metric(
-            "Scostamento rispetto al SAL atteso",
+            "Scostamento rispetto "
+            "al SAL atteso",
             (
                 f"{scostamento:+.1f} p.p."
                 .replace(
@@ -5155,10 +5223,6 @@ elif vista == "Dettaglio progetto":
             ),
         )
 
-
-    # ========================================================
-    # ATTIVITÀ
-    # ========================================================
 
     attivita = (
         costruisci_attivita(
@@ -5241,9 +5305,10 @@ elif vista == "Dettaglio progetto":
         if not anomalie_attivita.empty:
 
             st.warning(
-                f"{len(anomalie_attivita)} attività "
-                "presentano un SAL sorgente fuori "
-                "dall'intervallo 0–100%."
+                f"{len(anomalie_attivita)} "
+                "attività presentano un SAL "
+                "sorgente fuori dall'intervallo "
+                "0–100%."
             )
 
     else:
@@ -5255,12 +5320,9 @@ elif vista == "Dettaglio progetto":
         )
 
 
-    # ========================================================
-    # DATI SORGENTE SAL
-    # ========================================================
-
     with st.expander(
-        "Visualizza dati sorgente del foglio SAL"
+        "Visualizza dati sorgente "
+        "del foglio SAL"
     ):
 
         st.dataframe(
@@ -5304,7 +5366,8 @@ elif vista == "Dati sorgente":
 
     altri = [
         nome
-        for nome in sheet_names
+        for nome
+        in sheet_names
         if nome not in preferiti
     ]
 
@@ -5315,9 +5378,11 @@ elif vista == "Dati sorgente":
     )
 
 
-    foglio_raw = st.selectbox(
-        "Foglio da visualizzare",
-        elenco
+    foglio_raw = (
+        st.selectbox(
+            "Foglio da visualizzare",
+            elenco
+        )
     )
 
 
