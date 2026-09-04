@@ -1,7 +1,7 @@
 import re
 import unicodedata
-from datetime import datetime
 from difflib import SequenceMatcher
+from datetime import datetime
 from io import BytesIO
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
@@ -912,7 +912,13 @@ def trova_colonne_giorni_sal(
         nome_foglio
     )
 
-    if len(df.columns) >= 9:
+    if (
+        tipo in {
+            "EPAL",
+            "MGIO"
+        }
+        and len(df.columns) >= 9
+    ):
 
         candidato_fatto = (
             col_fatto
@@ -1100,12 +1106,12 @@ def calcola_giorni_progetto(
 
         return {
             **risultato_vuoto,
-            "disponibile": True,
-            "giorni_fatti": tot_fatto,
-            "giorni_da_fare": tot_da_fare,
-            "giorni_totali": totale,
-            "pct_fatti": 0.0,
-            "pct_da_fare": 0.0,
+            "giorni_fatti":
+                tot_fatto,
+            "giorni_da_fare":
+                tot_da_fare,
+            "giorni_totali":
+                totale,
         }
 
     pct_fatti = (
@@ -1788,6 +1794,16 @@ def costruisci_portafoglio_combinato(
 # ============================================================
 
 def consolida_progetti_univoci(df):
+    """
+    Una sola riga per ciascun progetto MiniPIA distinto.
+
+    REGOLA STATO:
+    se almeno una riga sorgente del progetto riporta
+    uno stato equivalente a COMPLETO, lo stato
+    consolidato è COMpletato.
+
+    Lo stato sorgente prevale quindi sul SAL numerico.
+    """
 
     if (
         df is None
@@ -1827,6 +1843,10 @@ def consolida_progetti_univoci(df):
 
         gruppo = gruppo.copy()
 
+        # ----------------------------------------------------
+        # NOME PROGETTO
+        # ----------------------------------------------------
+
         nomi_validi = [
             str(x).strip()
             for x
@@ -1843,6 +1863,10 @@ def consolida_progetti_univoci(df):
             else chiave
         )
 
+        # ----------------------------------------------------
+        # TEAM
+        # ----------------------------------------------------
+
         teams = {
             str(x).strip()
             for x
@@ -1855,6 +1879,10 @@ def consolida_progetti_univoci(df):
         team = team_da_insieme(
             teams
         )
+
+        # ----------------------------------------------------
+        # GIORNI
+        # ----------------------------------------------------
 
         fatto_series = (
             pd.to_numeric(
@@ -1919,6 +1947,20 @@ def consolida_progetti_univoci(df):
             da_fare = float("nan")
             totale_giorni = float("nan")
 
+        # ----------------------------------------------------
+        # SAL SORGENTE
+        # ----------------------------------------------------
+        #
+        # Se esiste una sola riga, il dato sorgente
+        # viene mantenuto esattamente.
+        #
+        # Se esistono più righe per lo stesso progetto,
+        # viene utilizzata la media dei SAL sorgente.
+        #
+        # Questo evita che eventuali valori anomali
+        # come 113,32% vengano nascosti.
+        # ----------------------------------------------------
+
         sal_values = (
             pd.to_numeric(
                 gruppo[
@@ -1980,6 +2022,10 @@ def consolida_progetti_univoci(df):
                     "nan"
                 )
 
+        # ----------------------------------------------------
+        # SAL VISUALIZZATO
+        # ----------------------------------------------------
+
         if pd.notna(
             sal_sorgente
         ):
@@ -1999,6 +2045,10 @@ def consolida_progetti_univoci(df):
             sal = float(
                 "nan"
             )
+
+        # ----------------------------------------------------
+        # ANOMALIA SAL
+        # ----------------------------------------------------
 
         anomalie_originali = False
 
@@ -2030,6 +2080,10 @@ def consolida_progetti_univoci(df):
                 )
             )
         )
+
+        # ----------------------------------------------------
+        # STATO SORGENTE
+        # ----------------------------------------------------
 
         stati_sorgente = []
 
@@ -2065,6 +2119,19 @@ def consolida_progetti_univoci(df):
             )
         )
 
+        # ----------------------------------------------------
+        # STATO CONSOLIDATO
+        # ----------------------------------------------------
+        #
+        # REGOLA DEFINITIVA:
+        #
+        # lo STATO sorgente del GANTT prevale
+        # sul valore percentuale del SAL.
+        #
+        # Se almeno uno stato sorgente indica
+        # COMPLETO, il progetto è Completato.
+        # ----------------------------------------------------
+
         completo_da_sorgente = any(
             stato_sorgente_e_completo(
                 value
@@ -2084,6 +2151,10 @@ def consolida_progetti_univoci(df):
             stato = stato_da_sal(
                 sal
             )
+
+        # ----------------------------------------------------
+        # SAL ATTESO
+        # ----------------------------------------------------
 
         sal_atteso = float(
             "nan"
@@ -2129,6 +2200,10 @@ def consolida_progetti_univoci(df):
                 "nan"
             )
 
+        # ----------------------------------------------------
+        # FOGLI ORIGINE
+        # ----------------------------------------------------
+
         fogli_origine = []
 
         if (
@@ -2156,6 +2231,10 @@ def consolida_progetti_univoci(df):
                     fogli_origine.append(
                         text
                     )
+
+        # ----------------------------------------------------
+        # OUTPUT
+        # ----------------------------------------------------
 
         righe.append(
             {
@@ -2231,21 +2310,23 @@ def portfolio_sal(df):
         df["Da fare"].notna()
     )
 
-    if validi_giorni.any():
+    # Il SAL ponderato viene calcolato solo quando
+    # tutti i progetti considerati dispongono sia
+    # dei giorni fatti sia dei giorni da fare.
+    if (
+        len(df) > 0
+        and validi_giorni.all()
+    ):
 
         fatto = (
-            df.loc[
-                validi_giorni,
-                "Fatto"
-            ]
+            df["Fatto"]
+            .clip(lower=0)
             .sum()
         )
 
         residuo = (
-            df.loc[
-                validi_giorni,
-                "Da fare"
-            ]
+            df["Da fare"]
+            .clip(lower=0)
             .sum()
         )
 
@@ -2265,12 +2346,18 @@ def portfolio_sal(df):
                 "ponderato sui giorni"
             )
 
-    if df[
-        "SAL"
-    ].notna().any():
+    # Se manca la coppia di giorni anche per un solo progetto,
+    # viene utilizzata la media dei SAL di tutti i progetti
+    # considerati, evitando un calcolo ponderato parziale.
+    sal_validi = (
+        df["SAL"]
+        .dropna()
+    )
+
+    if not sal_validi.empty:
 
         return (
-            df["SAL"].mean(),
+            sal_validi.mean(),
             "media dei SAL disponibili"
         )
 
@@ -2427,121 +2514,534 @@ def lista_fogli_sal(
 
 
 # ============================================================
-# MATCH AUTOMATICO PROGETTO -> SAL
+# MATCH RIGOROSO PROGETTO -> SAL
 # ============================================================
+
+def estrai_nome_progetto_da_foglio_sal(nome_foglio):
+    """
+    Estrae dal nome del foglio SAL la parte che identifica
+    il progetto, eliminando:
+    - prefisso SAL_ / SAL;
+    - suffisso di team (EPAL), (MGIO), (EPAL+MGIO), ecc.;
+    - separatori tecnici come underscore ripetuti.
+
+    Esempio:
+        SAL_vetreria Cristal (EPAL) -> vetreria Cristal
+    """
+
+    if nome_foglio is None:
+        return ""
+
+    testo = str(nome_foglio).strip()
+
+    testo = re.sub(
+        r"^\s*sal[_\s-]*",
+        "",
+        testo,
+        flags=re.IGNORECASE,
+    )
+
+    testo = re.sub(
+        r"\s*\((?:EPAL|MGIO|EPAL\s*\+\s*MGIO|MGIO\s*\+\s*EPAL)\)\s*$",
+        "",
+        testo,
+        flags=re.IGNORECASE,
+    )
+
+    testo = testo.replace("_", " ")
+
+    testo = re.sub(
+        r"\s+",
+        " ",
+        testo,
+    ).strip()
+
+    return testo
+
+
+def chiave_match_progetto(value):
+    """
+    Chiave conservativa per il matching progetto/SAL.
+    Non elimina parole descrittive del progetto, così da
+    evitare associazioni troppo permissive.
+    """
+
+    if value is None:
+        return ""
+
+    testo = normalizza_testo(value)
+
+    # Rimuove eventuali simboli usati soltanto a video.
+    testo = testo.replace("✅", " ")
+    testo = testo.replace("☑", " ")
+
+    # Uniforma & senza alterare il significato.
+    testo = testo.replace("&", " e ")
+
+    testo = re.sub(
+        r"[^a-z0-9]+",
+        " ",
+        testo,
+    )
+
+    return re.sub(
+        r"\s+",
+        " ",
+        testo,
+    ).strip()
+
+
+def chiave_compatta_match(value):
+    """
+    Variante senza spazi, utile per gestire differenze
+    puramente grafiche come Co.Ge.Sa. / CoGeSa.
+    """
+
+    return re.sub(
+        r"[^a-z0-9]",
+        "",
+        chiave_match_progetto(value),
+    )
+
+
+def varianti_match_progetto(value):
+    """
+    Genera un piccolo insieme di alias controllati.
+
+    La variante completa resta sempre quella principale.
+    Per nomi del tipo:
+        CoGeSa (Co.Ge.Sa.)
+    vengono considerate anche la parte esterna e quella
+    interna alle parentesi, evitando però trasformazioni
+    eccessivamente aggressive.
+    """
+
+    if value is None:
+        return set()
+
+    testo_originale = str(value).strip()
+
+    if not testo_originale:
+        return set()
+
+    parti = {testo_originale}
+
+    # Parte esterna alle parentesi.
+    senza_parentesi = re.sub(
+        r"\([^)]*\)",
+        " ",
+        testo_originale,
+    ).strip()
+
+    if senza_parentesi:
+        parti.add(senza_parentesi)
+
+    # Contenuti tra parentesi come alias espliciti.
+    for contenuto in re.findall(
+        r"\(([^)]*)\)",
+        testo_originale,
+    ):
+        contenuto = contenuto.strip()
+        if contenuto:
+            parti.add(contenuto)
+
+    varianti = set()
+
+    for parte in parti:
+
+        chiave = chiave_match_progetto(parte)
+        compatta = chiave_compatta_match(parte)
+
+        if chiave:
+            varianti.add(chiave)
+
+        if compatta:
+            varianti.add(compatta)
+
+    return varianti
+
+
+def token_match_progetto(value):
+
+    testo = chiave_match_progetto(value)
+
+    stopwords = {
+        "srl",
+        "spa",
+        "sas",
+        "snc",
+        "societa",
+        "soc",
+        "coop",
+        "cooperativa",
+        "benefit",
+    }
+
+    return {
+        token
+        for token in testo.split()
+        if len(token) >= 2
+        and token not in stopwords
+    }
+
+
+def metriche_match_progetto_sal(
+    progetto,
+    nome_foglio,
+):
+    """
+    Valuta la compatibilità tra un progetto del GANTT
+    e un foglio SAL.
+
+    Le corrispondenze esatte hanno sempre priorità.
+    Il fuzzy matching viene usato solo come fallback e
+    richiede una similarità elevata.
+    """
+
+    nome_sal = estrai_nome_progetto_da_foglio_sal(
+        nome_foglio
+    )
+
+    varianti_progetto = varianti_match_progetto(
+        progetto
+    )
+
+    varianti_sal = varianti_match_progetto(
+        nome_sal
+    )
+
+    if (
+        not varianti_progetto
+        or not varianti_sal
+    ):
+        return {
+            "esatto": False,
+            "score": 0.0,
+            "similarita": 0.0,
+            "jaccard": 0.0,
+            "metodo": "nessuna corrispondenza",
+        }
+
+    # --------------------------------------------------------
+    # 1. MATCH ESATTO SU UNA DELLE VARIANTI CONTROLLATE
+    # --------------------------------------------------------
+
+    if varianti_progetto & varianti_sal:
+
+        return {
+            "esatto": True,
+            "score": 1.0,
+            "similarita": 1.0,
+            "jaccard": 1.0,
+            "metodo": "nome esatto",
+        }
+
+    # --------------------------------------------------------
+    # 2. MATCH MOLTO FORTE PER CONTENIMENTO
+    # --------------------------------------------------------
+    # Viene accettato soltanto quando la parte più corta
+    # rappresenta almeno l'85% della più lunga. Questo evita
+    # casi come "Cristal" -> "vetreria Cristal".
+    # --------------------------------------------------------
+
+    miglior_contenimento = 0.0
+
+    for a in varianti_progetto:
+        for b in varianti_sal:
+
+            if not a or not b:
+                continue
+
+            if a in b or b in a:
+
+                rapporto = (
+                    min(len(a), len(b))
+                    / max(len(a), len(b))
+                )
+
+                miglior_contenimento = max(
+                    miglior_contenimento,
+                    rapporto,
+                )
+
+    if miglior_contenimento >= 0.85:
+
+        return {
+            "esatto": False,
+            "score": 0.97,
+            "similarita": miglior_contenimento,
+            "jaccard": 1.0,
+            "metodo": "contenimento forte",
+        }
+
+    # --------------------------------------------------------
+    # 3. FUZZY MATCHING CONTROLLATO
+    # --------------------------------------------------------
+
+    progetto_chiave = chiave_match_progetto(
+        progetto
+    )
+
+    sal_chiave = chiave_match_progetto(
+        nome_sal
+    )
+
+    similarita = SequenceMatcher(
+        None,
+        progetto_chiave,
+        sal_chiave,
+    ).ratio()
+
+    tokens_progetto = token_match_progetto(
+        progetto
+    )
+
+    tokens_sal = token_match_progetto(
+        nome_sal
+    )
+
+    unione = (
+        tokens_progetto
+        | tokens_sal
+    )
+
+    intersezione = (
+        tokens_progetto
+        & tokens_sal
+    )
+
+    if unione:
+        jaccard = (
+            len(intersezione)
+            / len(unione)
+        )
+    else:
+        jaccard = 0.0
+
+    # Lo score finale premia soprattutto la somiglianza
+    # testuale ma richiede anche coerenza dei token.
+    score = (
+        0.75 * similarita
+        +
+        0.25 * jaccard
+    )
+
+    return {
+        "esatto": False,
+        "score": score,
+        "similarita": similarita,
+        "jaccard": jaccard,
+        "metodo": "fuzzy controllato",
+    }
+
+
+def trova_foglio_sal_rigoroso(
+    progetto,
+    team,
+    sheet_names,
+    tipi_ammessi=None,
+    fogli_esclusi=None,
+    soglia_fuzzy=0.90,
+    margine_minimo=0.08,
+):
+    """
+    Associa un progetto a un foglio SAL in modo rigoroso.
+
+    Regole di sicurezza:
+    1. vengono considerati solo i SAL del team ammesso;
+    2. un match esatto è preferito a qualsiasi fuzzy match;
+    3. se esistono più match esatti, il risultato è ambiguo;
+    4. il fuzzy match è accettato solo con score >= 0,90;
+    5. il miglior fuzzy match deve superare il secondo di
+       almeno 0,08 punti;
+    6. lo stesso foglio può essere escluso se già assegnato
+       a un altro progetto nella medesima elaborazione.
+
+    In caso di dubbio restituisce None invece di attribuire
+    i giorni del SAL sbagliato.
+    """
+
+    fogli_esclusi = set(
+        fogli_esclusi or []
+    )
+
+    candidati = [
+        nome
+        for nome in lista_fogli_sal(
+            sheet_names,
+            None
+        )
+        if nome not in fogli_esclusi
+    ]
+
+    if tipi_ammessi is not None:
+
+        tipi_ammessi = set(
+            tipi_ammessi
+        )
+
+        candidati = [
+            nome
+            for nome in candidati
+            if tipo_sal_da_nome(nome)
+            in tipi_ammessi
+        ]
+
+    elif team is not None:
+
+        team_norm = normalizza_team(
+            team
+        )
+
+        if team_norm in {
+            "EPAL",
+            "MGIO",
+            "EPAL+MGIO",
+        }:
+
+            candidati = [
+                nome
+                for nome in candidati
+                if tipo_sal_da_nome(nome)
+                == team_norm
+            ]
+
+    if not candidati:
+
+        return {
+            "foglio": None,
+            "score": 0.0,
+            "metodo": "nessun candidato del team",
+            "ambiguo": False,
+        }
+
+    valutazioni = []
+
+    for nome in candidati:
+
+        metriche = metriche_match_progetto_sal(
+            progetto,
+            nome,
+        )
+
+        valutazioni.append(
+            {
+                "foglio": nome,
+                **metriche,
+            }
+        )
+
+    # --------------------------------------------------------
+    # MATCH ESATTI
+    # --------------------------------------------------------
+
+    esatti = [
+        x
+        for x in valutazioni
+        if x["esatto"]
+    ]
+
+    if len(esatti) == 1:
+
+        return {
+            "foglio": esatti[0]["foglio"],
+            "score": 1.0,
+            "metodo": esatti[0]["metodo"],
+            "ambiguo": False,
+        }
+
+    if len(esatti) > 1:
+
+        return {
+            "foglio": None,
+            "score": 1.0,
+            "metodo": "match esatto ambiguo",
+            "ambiguo": True,
+        }
+
+    # --------------------------------------------------------
+    # MATCH NON ESATTI
+    # --------------------------------------------------------
+
+    valutazioni.sort(
+        key=lambda x: x["score"],
+        reverse=True,
+    )
+
+    migliore = valutazioni[0]
+
+    secondo_score = (
+        valutazioni[1]["score"]
+        if len(valutazioni) > 1
+        else 0.0
+    )
+
+    margine = (
+        migliore["score"]
+        - secondo_score
+    )
+
+    # Contenimento forte: score 0,97.
+    # Fuzzy: almeno 0,90 e margine netto sul secondo.
+    if (
+        migliore["score"] >= soglia_fuzzy
+        and
+        margine >= margine_minimo
+    ):
+
+        return {
+            "foglio": migliore["foglio"],
+            "score": migliore["score"],
+            "metodo": migliore["metodo"],
+            "ambiguo": False,
+        }
+
+    return {
+        "foglio": None,
+        "score": migliore["score"],
+        "metodo": "corrispondenza non sufficientemente sicura",
+        "ambiguo": (
+            margine < margine_minimo
+        ),
+    }
+
 
 def score_match_foglio(
     progetto,
     foglio,
     team=None,
 ):
-
-    progetto_norm = chiave_progetto(
-        progetto
-    )
-
-    foglio_norm = chiave_progetto(
-        foglio
-    )
-
-    if (
-        not progetto_norm
-        or not foglio_norm
-    ):
-        return 0.0
-
-    score = 0.0
-
-    if progetto_norm in foglio_norm:
-        score += 0.65
-
-    progetto_tokens = tokenizza(
-        progetto
-    )
-
-    foglio_tokens = tokenizza(
-        foglio
-    )
-
-    if (
-        progetto_tokens
-        and foglio_tokens
-    ):
-
-        intersezione = (
-            progetto_tokens
-            & foglio_tokens
-        )
-
-        copertura_foglio = (
-            len(intersezione)
-            / len(foglio_tokens)
-        )
-
-        copertura_progetto = (
-            len(intersezione)
-            / len(progetto_tokens)
-        )
-
-        score += (
-            0.55
-            * copertura_foglio
-        )
-
-        score += (
-            0.20
-            * copertura_progetto
-        )
-
-    tipo = tipo_sal_da_nome(
-        foglio
-    )
+    """
+    Wrapper mantenuto per compatibilità con il resto
+    dell'applicazione. Usa la nuova metrica rigorosa.
+    """
 
     if team is not None:
 
-        if tipo == team:
-            score += 0.10
+        tipo = tipo_sal_da_nome(
+            foglio
+        )
 
-        elif (
-            tipo == "EPAL+MGIO"
-            and team in {
+        team_norm = normalizza_team(
+            team
+        )
+
+        # Il team deve essere coerente. Il controllo è
+        # volutamente rigido per evitare associazioni incrociate.
+        if (
+            team_norm in {
                 "EPAL",
-                "MGIO"
+                "MGIO",
+                "EPAL+MGIO",
             }
+            and tipo != team_norm
         ):
+            return 0.0
 
-            score += 0.03
-
-    return min(
-        score,
-        1.0
-    )
-
-
-def opport_ricerca_foglio(progetto, filtro_team, sheet_names):
-    candidati = []
-    for nome in sheet_names:
-        if nome in TEMPLATE_SAL:
-            continue
-        norm_nome = normalizza_testo(nome)
-        if not norm_nome.startswith("sal"):
-            continue
-        if "gantt" in norm_nome:
-            continue
-
-        tipo = tipo_sal_da_nome(nome)
-        if filtro_team is not None:
-            if tipo in {filtro_team, "EPAL+MGIO", None}:
-                candidati.append(nome)
-        else:
-            candidati.append(nome)
-
-    if not candidati:
-        return None, 0.0
-
-    scores = [(nome, score_match_foglio(progetto, nome, filtro_team)) for nome in candidati]
-    scores.sort(key=lambda x: x[1], reverse=True)
-    return scores[0]
+    return metriche_match_progetto_sal(
+        progetto,
+        foglio,
+    )["score"]
 
 
 def trova_foglio_sal_migliore(
@@ -2549,80 +3049,504 @@ def trova_foglio_sal_migliore(
     team,
     sheet_names,
 ):
+    """
+    Utilizzata nella vista Dettaglio progetto.
 
-    foglio, score = opport_ricerca_foglio(progetto, team, sheet_names)
-    if not foglio:
-        foglio, score = opport_ricerca_foglio(progetto, None, sheet_names)
+    Cerca prima il SAL dello stesso team. Per EPAL/MGIO,
+    se non esiste un'associazione sicura, prova un eventuale
+    SAL combinato. Non effettua mai un fallback indiscriminato
+    su fogli di altri progetti/team.
+    """
 
-    return foglio, score
+    team_norm = normalizza_team(
+        team
+    )
+
+    risultato = trova_foglio_sal_rigoroso(
+        progetto=progetto,
+        team=team_norm,
+        sheet_names=sheet_names,
+        tipi_ammessi={team_norm}
+        if team_norm in {
+            "EPAL",
+            "MGIO",
+            "EPAL+MGIO",
+        }
+        else None,
+    )
+
+    if risultato["foglio"] is not None:
+
+        return (
+            risultato["foglio"],
+            risultato["score"],
+        )
+
+    # Fallback controllato per un progetto individuale che
+    # disponga soltanto del SAL combinato.
+    if team_norm in {
+        "EPAL",
+        "MGIO",
+    }:
+
+        risultato_combinato = (
+            trova_foglio_sal_rigoroso(
+                progetto=progetto,
+                team="EPAL+MGIO",
+                sheet_names=sheet_names,
+                tipi_ammessi={
+                    "EPAL+MGIO"
+                },
+            )
+        )
+
+        if (
+            risultato_combinato["foglio"]
+            is not None
+        ):
+
+            return (
+                risultato_combinato["foglio"],
+                risultato_combinato["score"],
+            )
+
+    return (
+        None,
+        risultato["score"],
+    )
 
 
-def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names):
-    team_norm = normalizza_team(team)
+# ============================================================
+# GIORNI DI PROGETTO PER LE VISTE DI PORTAFOGLIO
+# ============================================================
 
-    if team_norm == "EPAL+MGIO":
-        foglio_epal, s_epal = opport_ricerca_foglio(progetto, "EPAL", sheet_names)
-        foglio_mgio, s_mgio = opport_ricerca_foglio(progetto, "MGIO", sheet_names)
+def miglior_sal_con_giorni(
+    progetto,
+    team,
+    fogli,
+    sheet_names,
+    tipi_ammessi=None,
+    fogli_esclusi=None,
+):
+    """
+    Individua prima il foglio SAL con il matching rigoroso
+    e soltanto dopo calcola i giorni.
 
-        res_epal = calcola_giorni_progetto(fogli[foglio_epal], foglio_epal) if foglio_epal and foglio_epal in fogli else {"disponibile": False}
-        res_mgio = calcola_giorni_progetto(fogli[foglio_mgio], foglio_mgio) if foglio_mgio and foglio_mgio in fogli else {"disponibile": False}
+    Se il nome non è sufficientemente sicuro, restituisce
+    None e la vista mostra N/D: è preferibile un N/D a
+    riportare i giorni di un altro progetto.
+    """
 
-        if foglio_epal and foglio_mgio and foglio_epal != foglio_mgio and res_epal["disponibile"] and res_mgio["disponibile"]:
-            fatto_tot = res_epal["giorni_fatti"] + res_mgio["giorni_fatti"]
-            da_fare_tot = res_epal["giorni_da_fare"] + res_mgio["giorni_da_fare"]
-            return fatto_tot, da_fare_tot
+    risultato_match = trova_foglio_sal_rigoroso(
+        progetto=progetto,
+        team=team,
+        sheet_names=sheet_names,
+        tipi_ammessi=tipi_ammessi,
+        fogli_esclusi=fogli_esclusi,
+    )
 
-        if res_epal["disponibile"] and not res_mgio["disponibile"]:
-            return res_epal["giorni_fatti"], res_epal["giorni_da_fare"]
+    nome_foglio = risultato_match[
+        "foglio"
+    ]
 
-        if res_mgio["disponibile"] and not res_epal["disponibile"]:
-            return res_mgio["giorni_fatti"], res_mgio["giorni_da_fare"]
+    if (
+        nome_foglio is None
+        or nome_foglio not in fogli
+    ):
+        return None
 
-        foglio_comb, _ = opport_ricerca_foglio(progetto, None, sheet_names)
-        if foglio_comb and foglio_comb in fogli:
-            res_comb = calcola_giorni_progetto(fogli[foglio_comb], foglio_comb)
-            if res_comb["disponibile"]:
-                return res_comb["giorni_fatti"], res_comb["giorni_da_fare"]
+    riepilogo = calcola_giorni_progetto(
+        fogli[nome_foglio],
+        nome_foglio,
+    )
 
-        return float("nan"), float("nan")
+    if not riepilogo["disponibile"]:
+        return None
 
-    else:
-        foglio_single, _ = opport_ricerca_foglio(progetto, team_norm, sheet_names)
-        if not foglio_single:
-            foglio_single, _ = opport_ricerca_foglio(progetto, None, sheet_names)
+    return {
+        "foglio": nome_foglio,
+        "score": risultato_match["score"],
+        "metodo": risultato_match["metodo"],
+        "giorni_fatti":
+            riepilogo["giorni_fatti"],
+        "giorni_da_fare":
+            riepilogo["giorni_da_fare"],
+        "giorni_totali":
+            riepilogo["giorni_totali"],
+    }
 
-        if foglio_single and foglio_single in fogli:
-            res = calcola_giorni_progetto(fogli[foglio_single], foglio_single)
-            if res["disponibile"]:
-                return res["giorni_fatti"], res["giorni_da_fare"]
 
-        return float("nan"), float("nan")
+def arricchisci_portafoglio_con_giorni_sal(
+    df,
+    fogli,
+    sheet_names,
+):
+    """
+    Completa Fatto e Da fare usando associazioni SAL rigorose.
 
+    Regole Executive:
+    - EPAL -> giorni del SAL EPAL del progetto;
+    - MGIO -> giorni del SAL MGIO del progetto;
+    - EPAL+MGIO -> UNA SOLA riga, con:
+          giorni fatti EPAL + giorni fatti MGIO
+          giorni da fare EPAL + giorni da fare MGIO
+    - per un progetto condiviso la somma viene eseguita solo
+      se entrambe le componenti sono state associate in modo
+      sicuro;
+    - se manca una componente viene provato il SAL combinato;
+    - lo stesso foglio SAL non può essere attribuito a due
+      progetti diversi nella stessa elaborazione;
+    - una coppia parziale di giorni non viene mai mostrata:
+      o sono disponibili entrambi, oppure entrambi diventano N/D.
+    """
 
-def arricchisci_portafoglio_con_giorni_sal(df, fogli, sheet_names):
-    if df is None or df.empty:
+    if (
+        df is None
+        or df.empty
+    ):
         return df
 
     out = df.copy()
 
-    for idx in out.index:
-        progetto = out.at[idx, "Progetto"]
-        team = out.at[idx, "Team"] if "Team" in out.columns else "N/D"
+    if "Fatto" not in out.columns:
+        out["Fatto"] = float("nan")
 
-        fatto, da_fare = calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names)
+    if "Da fare" not in out.columns:
+        out["Da fare"] = float("nan")
 
-        if pd.notna(fatto) and pd.notna(da_fare):
-            out.at[idx, "Fatto"] = fatto
-            out.at[idx, "Da fare"] = da_fare
-        else:
-            orig_f = df.at[idx, "Fatto"] if "Fatto" in df.columns else float("nan")
-            orig_df = df.at[idx, "Da fare"] if "Da fare" in df.columns else float("nan")
-            if pd.notna(orig_f) and pd.notna(orig_df):
-                out.at[idx, "Fatto"] = orig_f
-                out.at[idx, "Da fare"] = orig_df
+    out["Fonte giorni"] = ""
+    out["Foglio SAL giorni"] = ""
+    out["Metodo associazione giorni"] = ""
+    out["Score associazione giorni"] = float("nan")
+
+    # Impedisce il riutilizzo dello stesso SAL per due progetti
+    # diversi all'interno della stessa vista di portafoglio.
+    fogli_usati = set()
+
+    for idx, riga in out.iterrows():
+
+        fatto_gantt = riga.get(
+            "Fatto",
+            float("nan")
+        )
+
+        da_fare_gantt = riga.get(
+            "Da fare",
+            float("nan")
+        )
+
+        # Se il GANTT contiene già una coppia completa,
+        # la coppia rimane autorevole.
+        if (
+            pd.notna(fatto_gantt)
+            and
+            pd.notna(da_fare_gantt)
+        ):
+
+            out.at[idx, "Fonte giorni"] = "GANTT"
+            out.at[
+                idx,
+                "Metodo associazione giorni"
+            ] = "giorni già presenti nel GANTT"
+
+            continue
+
+        # Una coppia parziale non deve restare visibile.
+        out.at[idx, "Fatto"] = float("nan")
+        out.at[idx, "Da fare"] = float("nan")
+
+        progetto = riga["Progetto"]
+
+        team = normalizza_team(
+            riga.get(
+                "Team",
+                "N/D"
+            )
+        )
+
+        risultato = None
+
+        # ====================================================
+        # PROGETTO CONDIVISO EPAL+MGIO
+        # ====================================================
+
+        if team == "EPAL+MGIO":
+
+            risultato_epal = (
+                miglior_sal_con_giorni(
+                    progetto=progetto,
+                    team="EPAL",
+                    fogli=fogli,
+                    sheet_names=sheet_names,
+                    tipi_ammessi={"EPAL"},
+                    fogli_esclusi=fogli_usati,
+                )
+            )
+
+            esclusi_mgio = set(
+                fogli_usati
+            )
+
+            if risultato_epal is not None:
+                esclusi_mgio.add(
+                    risultato_epal["foglio"]
+                )
+
+            risultato_mgio = (
+                miglior_sal_con_giorni(
+                    progetto=progetto,
+                    team="MGIO",
+                    fogli=fogli,
+                    sheet_names=sheet_names,
+                    tipi_ammessi={"MGIO"},
+                    fogli_esclusi=esclusi_mgio,
+                )
+            )
+
+            # Somma solo con entrambe le componenti sicure.
+            if (
+                risultato_epal is not None
+                and
+                risultato_mgio is not None
+            ):
+
+                risultato = {
+                    "giorni_fatti": (
+                        risultato_epal["giorni_fatti"]
+                        +
+                        risultato_mgio["giorni_fatti"]
+                    ),
+                    "giorni_da_fare": (
+                        risultato_epal["giorni_da_fare"]
+                        +
+                        risultato_mgio["giorni_da_fare"]
+                    ),
+                    "giorni_totali": (
+                        risultato_epal["giorni_totali"]
+                        +
+                        risultato_mgio["giorni_totali"]
+                    ),
+                    "foglio": (
+                        risultato_epal["foglio"]
+                        + " + "
+                        + risultato_mgio["foglio"]
+                    ),
+                    "fogli_utilizzati": [
+                        risultato_epal["foglio"],
+                        risultato_mgio["foglio"],
+                    ],
+                    "score": min(
+                        risultato_epal["score"],
+                        risultato_mgio["score"],
+                    ),
+                    "metodo": (
+                        "somma SAL EPAL + MGIO; "
+                        + risultato_epal["metodo"]
+                        + " / "
+                        + risultato_mgio["metodo"]
+                    ),
+                }
+
             else:
-                out.at[idx, "Fatto"] = float("nan")
-                out.at[idx, "Da fare"] = float("nan")
+
+                # Fallback: usa un SAL combinato solo se anche
+                # questo è associato in modo rigoroso.
+                risultato_combinato = (
+                    miglior_sal_con_giorni(
+                        progetto=progetto,
+                        team="EPAL+MGIO",
+                        fogli=fogli,
+                        sheet_names=sheet_names,
+                        tipi_ammessi={
+                            "EPAL+MGIO"
+                        },
+                        fogli_esclusi=fogli_usati,
+                    )
+                )
+
+                if risultato_combinato is not None:
+
+                    risultato = {
+                        **risultato_combinato,
+                        "fogli_utilizzati": [
+                            risultato_combinato[
+                                "foglio"
+                            ]
+                        ],
+                    }
+
+        # ====================================================
+        # PROGETTO EPAL
+        # ====================================================
+
+        elif team == "EPAL":
+
+            risultato_epal = (
+                miglior_sal_con_giorni(
+                    progetto=progetto,
+                    team="EPAL",
+                    fogli=fogli,
+                    sheet_names=sheet_names,
+                    tipi_ammessi={"EPAL"},
+                    fogli_esclusi=fogli_usati,
+                )
+            )
+
+            if risultato_epal is not None:
+
+                risultato = {
+                    **risultato_epal,
+                    "fogli_utilizzati": [
+                        risultato_epal["foglio"]
+                    ],
+                }
+
+            else:
+
+                risultato_combinato = (
+                    miglior_sal_con_giorni(
+                        progetto=progetto,
+                        team="EPAL+MGIO",
+                        fogli=fogli,
+                        sheet_names=sheet_names,
+                        tipi_ammessi={
+                            "EPAL+MGIO"
+                        },
+                        fogli_esclusi=fogli_usati,
+                    )
+                )
+
+                if risultato_combinato is not None:
+
+                    risultato = {
+                        **risultato_combinato,
+                        "fogli_utilizzati": [
+                            risultato_combinato[
+                                "foglio"
+                            ]
+                        ],
+                    }
+
+        # ====================================================
+        # PROGETTO MGIO
+        # ====================================================
+
+        elif team == "MGIO":
+
+            risultato_mgio = (
+                miglior_sal_con_giorni(
+                    progetto=progetto,
+                    team="MGIO",
+                    fogli=fogli,
+                    sheet_names=sheet_names,
+                    tipi_ammessi={"MGIO"},
+                    fogli_esclusi=fogli_usati,
+                )
+            )
+
+            if risultato_mgio is not None:
+
+                risultato = {
+                    **risultato_mgio,
+                    "fogli_utilizzati": [
+                        risultato_mgio["foglio"]
+                    ],
+                }
+
+            else:
+
+                risultato_combinato = (
+                    miglior_sal_con_giorni(
+                        progetto=progetto,
+                        team="EPAL+MGIO",
+                        fogli=fogli,
+                        sheet_names=sheet_names,
+                        tipi_ammessi={
+                            "EPAL+MGIO"
+                        },
+                        fogli_esclusi=fogli_usati,
+                    )
+                )
+
+                if risultato_combinato is not None:
+
+                    risultato = {
+                        **risultato_combinato,
+                        "fogli_utilizzati": [
+                            risultato_combinato[
+                                "foglio"
+                            ]
+                        ],
+                    }
+
+        # ====================================================
+        # TEAM NON RICONOSCIUTO
+        # ====================================================
+
+        else:
+
+            # Nessun fuzzy indiscriminato su tutti i SAL.
+            # Se il team non è riconoscibile, il dato rimane N/D.
+            risultato = None
+
+        # ====================================================
+        # AGGIORNAMENTO RIGA
+        # ====================================================
+
+        if risultato is not None:
+
+            out.at[idx, "Fatto"] = (
+                risultato["giorni_fatti"]
+            )
+
+            out.at[idx, "Da fare"] = (
+                risultato["giorni_da_fare"]
+            )
+
+            out.at[idx, "Fonte giorni"] = "SAL"
+
+            out.at[
+                idx,
+                "Foglio SAL giorni"
+            ] = risultato["foglio"]
+
+            out.at[
+                idx,
+                "Metodo associazione giorni"
+            ] = risultato.get(
+                "metodo",
+                "match rigoroso"
+            )
+
+            out.at[
+                idx,
+                "Score associazione giorni"
+            ] = risultato.get(
+                "score",
+                float("nan")
+            )
+
+            for nome_foglio in risultato.get(
+                "fogli_utilizzati",
+                []
+            ):
+                fogli_usati.add(
+                    nome_foglio
+                )
+
+        else:
+
+            out.at[
+                idx,
+                "Fonte giorni"
+            ] = "N/D"
+
+            out.at[
+                idx,
+                "Metodo associazione giorni"
+            ] = (
+                "nessun SAL associato con sufficiente sicurezza"
+            )
 
     return out
 
@@ -3614,8 +4538,30 @@ def tabella_portafoglio(df):
         colonne
     ].copy()
 
-    tabella["Fatto"] = tabella["Fatto"].apply(formatta_numero)
-    tabella["Da fare"] = tabella["Da fare"].apply(formatta_numero)
+    # I giorni vengono visualizzati in forma testuale
+    # così, se un dato non è disponibile, compare N/D
+    # invece di None.
+    tabella[
+        "Fatto"
+    ] = (
+        tabella[
+            "Fatto"
+        ]
+        .apply(
+            formatta_numero
+        )
+    )
+
+    tabella[
+        "Da fare"
+    ] = (
+        tabella[
+            "Da fare"
+        ]
+        .apply(
+            formatta_numero
+        )
+    )
 
     configurazione = {
 
@@ -3746,7 +4692,7 @@ with header_right:
 
 
 # ============================================================
-# CARICAMENTO GOOGLE SHEETS
+# CARICAMENTO DATI
 # ============================================================
 
 try:
@@ -3873,6 +4819,11 @@ else:
 # ============================================================
 # ARRICCHIMENTO EPAL E MGIO CON I GIORNI DEI SAL
 # ============================================================
+#
+# I giorni vengono ricavati dai fogli SAL e portati a livello
+# di portafoglio, così possono essere visualizzati anche nelle
+# viste Executive e Avanzamento.
+# ============================================================
 
 portfolio_epal = (
     arricchisci_portafoglio_con_giorni_sal(
@@ -3932,6 +4883,9 @@ else:
 # ============================================================
 # PORTAFOGLIO TUTTI - EPAL+MGIO
 # ============================================================
+#
+# Una sola riga per ogni progetto MiniPIA distinto.
+# ============================================================
 
 if not portfolio_da_gantt_combinato.empty:
 
@@ -3963,6 +4917,15 @@ portfolio_tutti = (
     )
 )
 
+
+# ============================================================
+# GIORNI DEL PORTAFOGLIO CONSOLIDATO
+# ============================================================
+#
+# Per i progetti condivisi EPAL+MGIO la vista complessiva
+# contiene una sola riga di progetto, ma i giorni sono la somma
+# delle componenti EPAL e MGIO.
+# ============================================================
 
 portfolio_tutti = (
     arricchisci_portafoglio_con_giorni_sal(
@@ -4560,19 +5523,41 @@ if vista == "Executive":
             "Priorità operative"
         )
 
-        priorita_tabella = priorita[
-            [
-                "Progetto",
-                "Team",
-                "SAL",
-                "Stato",
-                "Fatto",
-                "Da fare",
+        priorita_tabella = (
+            priorita[
+                [
+                    "Progetto",
+                    "Team",
+                    "SAL",
+                    "Stato",
+                    "Fatto",
+                    "Da fare",
+                ]
             ]
-        ].copy()
+            .copy()
+        )
 
-        priorita_tabella["Fatto"] = priorita_tabella["Fatto"].apply(formatta_numero)
-        priorita_tabella["Da fare"] = priorita_tabella["Da fare"].apply(formatta_numero)
+        priorita_tabella[
+            "Fatto"
+        ] = (
+            priorita_tabella[
+                "Fatto"
+            ]
+            .apply(
+                formatta_numero
+            )
+        )
+
+        priorita_tabella[
+            "Da fare"
+        ] = (
+            priorita_tabella[
+                "Da fare"
+            ]
+            .apply(
+                formatta_numero
+            )
+        )
 
         st.dataframe(
             priorita_tabella,
@@ -4590,12 +5575,12 @@ if vista == "Executive":
 
                 "Fatto":
                     st.column_config.TextColumn(
-                        "Giorni fatti",
+                        "Giorni fatti"
                     ),
 
                 "Da fare":
                     st.column_config.TextColumn(
-                        "Giorni da fare",
+                        "Giorni da fare"
                     ),
             },
         )
