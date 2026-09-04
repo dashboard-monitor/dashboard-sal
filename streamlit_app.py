@@ -2309,21 +2309,23 @@ def portfolio_sal(df):
         df["Da fare"].notna()
     )
 
-    if validi_giorni.any():
+    # Il SAL ponderato viene calcolato solo quando
+    # tutti i progetti considerati dispongono sia
+    # dei giorni fatti sia dei giorni da fare.
+    if (
+        len(df) > 0
+        and validi_giorni.all()
+    ):
 
         fatto = (
-            df.loc[
-                validi_giorni,
-                "Fatto"
-            ]
+            df["Fatto"]
+            .clip(lower=0)
             .sum()
         )
 
         residuo = (
-            df.loc[
-                validi_giorni,
-                "Da fare"
-            ]
+            df["Da fare"]
+            .clip(lower=0)
             .sum()
         )
 
@@ -2343,12 +2345,18 @@ def portfolio_sal(df):
                 "ponderato sui giorni"
             )
 
-    if df[
-        "SAL"
-    ].notna().any():
+    # Se manca la coppia di giorni anche per un solo progetto,
+    # viene utilizzata la media dei SAL di tutti i progetti
+    # considerati, evitando un calcolo ponderato parziale.
+    sal_validi = (
+        df["SAL"]
+        .dropna()
+    )
+
+    if not sal_validi.empty:
 
         return (
-            df["SAL"].mean(),
+            sal_validi.mean(),
             "media dei SAL disponibili"
         )
 
@@ -2639,6 +2647,347 @@ def trova_foglio_sal_migliore(
     )
 
     return scores[0]
+
+
+# ============================================================
+# GIORNI DI PROGETTO PER LE VISTE DI PORTAFOGLIO
+# ============================================================
+
+def miglior_sal_con_giorni(
+    progetto,
+    team,
+    fogli,
+    sheet_names,
+    tipi_ammessi=None,
+    soglia_match=0.30,
+):
+    """
+    Individua il foglio SAL più coerente con il progetto
+    e restituisce i giorni fatti / da fare calcolati
+    sulle attività del SAL.
+
+    Vengono considerati soltanto i fogli che:
+    - appartengono al tipo di portafoglio richiesto;
+    - superano la soglia minima di matching;
+    - contengono una coppia valida di giorni fatti / da fare.
+    """
+
+    candidati = [
+        nome
+        for nome in lista_fogli_sal(
+            sheet_names,
+            None
+        )
+        if nome in fogli
+    ]
+
+    if tipi_ammessi is not None:
+
+        candidati = [
+            nome
+            for nome in candidati
+            if tipo_sal_da_nome(nome)
+            in tipi_ammessi
+        ]
+
+    if not candidati:
+        return None
+
+    candidati_con_score = [
+        (
+            nome,
+            score_match_foglio(
+                progetto,
+                nome,
+                team,
+            )
+        )
+        for nome in candidati
+    ]
+
+    candidati_con_score.sort(
+        key=lambda x: x[1],
+        reverse=True,
+    )
+
+    for nome_foglio, score in candidati_con_score:
+
+        if score < soglia_match:
+            break
+
+        riepilogo = calcola_giorni_progetto(
+            fogli[nome_foglio],
+            nome_foglio,
+        )
+
+        if riepilogo["disponibile"]:
+
+            return {
+                "foglio": nome_foglio,
+                "score": score,
+                "giorni_fatti":
+                    riepilogo["giorni_fatti"],
+                "giorni_da_fare":
+                    riepilogo["giorni_da_fare"],
+                "giorni_totali":
+                    riepilogo["giorni_totali"],
+            }
+
+    return None
+
+
+def arricchisci_portafoglio_con_giorni_sal(
+    df,
+    fogli,
+    sheet_names,
+):
+    """
+    Completa le colonne Fatto e Da fare del portafoglio
+    utilizzando i singoli fogli SAL.
+
+    Regole:
+    - progetto EPAL: giorni del relativo SAL EPAL;
+    - progetto MGIO: giorni del relativo SAL MGIO;
+    - progetto EPAL+MGIO: una sola riga di progetto, con
+      giorni EPAL + giorni MGIO;
+    - se il GANTT contiene già una coppia completa di giorni,
+      questa viene mantenuta;
+    - se per un progetto condiviso non sono disponibili
+      entrambe le componenti EPAL e MGIO, viene tentato
+      un eventuale SAL combinato; in assenza anche di quello
+      il dato rimane N/D, evitando somme parziali fuorvianti.
+    """
+
+    if (
+        df is None
+        or df.empty
+    ):
+        return df
+
+    out = df.copy()
+
+    if "Fatto" not in out.columns:
+        out["Fatto"] = float("nan")
+
+    if "Da fare" not in out.columns:
+        out["Da fare"] = float("nan")
+
+    out["Fonte giorni"] = ""
+    out["Foglio SAL giorni"] = ""
+
+    for idx, riga in out.iterrows():
+
+        # Se il GANTT contiene già entrambi i valori,
+        # la coppia viene mantenuta senza sovrascriverla.
+        if (
+            pd.notna(riga["Fatto"])
+            and
+            pd.notna(riga["Da fare"])
+        ):
+
+            out.at[
+                idx,
+                "Fonte giorni"
+            ] = "GANTT"
+
+            continue
+
+        progetto = riga["Progetto"]
+
+        team = normalizza_team(
+            riga.get(
+                "Team",
+                "N/D"
+            )
+        )
+
+        risultato = None
+
+        # ====================================================
+        # PROGETTO CONDIVISO EPAL+MGIO
+        # ====================================================
+        #
+        # Nella vista consolidata il progetto compare una sola
+        # volta, ma i giorni delle due componenti devono essere
+        # sommati: EPAL + MGIO.
+        # ====================================================
+
+        if team == "EPAL+MGIO":
+
+            risultato_epal = (
+                miglior_sal_con_giorni(
+                    progetto=progetto,
+                    team="EPAL",
+                    fogli=fogli,
+                    sheet_names=sheet_names,
+                    tipi_ammessi={
+                        "EPAL"
+                    },
+                )
+            )
+
+            risultato_mgio = (
+                miglior_sal_con_giorni(
+                    progetto=progetto,
+                    team="MGIO",
+                    fogli=fogli,
+                    sheet_names=sheet_names,
+                    tipi_ammessi={
+                        "MGIO"
+                    },
+                )
+            )
+
+            # La somma viene eseguita solo quando sono
+            # disponibili entrambe le componenti.
+            if (
+                risultato_epal is not None
+                and
+                risultato_mgio is not None
+            ):
+
+                risultato = {
+                    "giorni_fatti":
+                        risultato_epal["giorni_fatti"]
+                        +
+                        risultato_mgio["giorni_fatti"],
+
+                    "giorni_da_fare":
+                        risultato_epal["giorni_da_fare"]
+                        +
+                        risultato_mgio["giorni_da_fare"],
+
+                    "giorni_totali":
+                        risultato_epal["giorni_totali"]
+                        +
+                        risultato_mgio["giorni_totali"],
+
+                    "foglio":
+                        risultato_epal["foglio"]
+                        + " + "
+                        + risultato_mgio["foglio"],
+                }
+
+            else:
+
+                # Fallback prudenziale: se manca una delle due
+                # componenti, viene cercato un eventuale SAL
+                # combinato. Non viene utilizzata una sola
+                # componente perché produrrebbe un totale
+                # sottostimato nella vista Executive.
+                risultato = miglior_sal_con_giorni(
+                    progetto=progetto,
+                    team="EPAL+MGIO",
+                    fogli=fogli,
+                    sheet_names=sheet_names,
+                    tipi_ammessi={
+                        "EPAL+MGIO"
+                    },
+                )
+
+        # ====================================================
+        # PROGETTO EPAL
+        # ====================================================
+
+        elif team == "EPAL":
+
+            risultato = miglior_sal_con_giorni(
+                progetto=progetto,
+                team="EPAL",
+                fogli=fogli,
+                sheet_names=sheet_names,
+                tipi_ammessi={
+                    "EPAL"
+                },
+            )
+
+            if risultato is None:
+
+                risultato = miglior_sal_con_giorni(
+                    progetto=progetto,
+                    team="EPAL",
+                    fogli=fogli,
+                    sheet_names=sheet_names,
+                    tipi_ammessi={
+                        "EPAL+MGIO"
+                    },
+                )
+
+        # ====================================================
+        # PROGETTO MGIO
+        # ====================================================
+
+        elif team == "MGIO":
+
+            risultato = miglior_sal_con_giorni(
+                progetto=progetto,
+                team="MGIO",
+                fogli=fogli,
+                sheet_names=sheet_names,
+                tipi_ammessi={
+                    "MGIO"
+                },
+            )
+
+            if risultato is None:
+
+                risultato = miglior_sal_con_giorni(
+                    progetto=progetto,
+                    team="MGIO",
+                    fogli=fogli,
+                    sheet_names=sheet_names,
+                    tipi_ammessi={
+                        "EPAL+MGIO"
+                    },
+                )
+
+        # ====================================================
+        # TEAM NON RICONOSCIUTO
+        # ====================================================
+
+        else:
+
+            risultato = miglior_sal_con_giorni(
+                progetto=progetto,
+                team=None,
+                fogli=fogli,
+                sheet_names=sheet_names,
+                tipi_ammessi=None,
+            )
+
+        # ====================================================
+        # AGGIORNAMENTO DELLA RIGA DI PORTAFOGLIO
+        # ====================================================
+
+        if risultato is not None:
+
+            out.at[
+                idx,
+                "Fatto"
+            ] = risultato[
+                "giorni_fatti"
+            ]
+
+            out.at[
+                idx,
+                "Da fare"
+            ] = risultato[
+                "giorni_da_fare"
+            ]
+
+            out.at[
+                idx,
+                "Fonte giorni"
+            ] = "SAL"
+
+            out.at[
+                idx,
+                "Foglio SAL giorni"
+            ] = risultato[
+                "foglio"
+            ]
+
+    return out
 
 
 # ============================================================
@@ -3628,6 +3977,31 @@ def tabella_portafoglio(df):
         colonne
     ].copy()
 
+    # I giorni vengono visualizzati in forma testuale
+    # così, se un dato non è disponibile, compare N/D
+    # invece di None.
+    tabella[
+        "Fatto"
+    ] = (
+        tabella[
+            "Fatto"
+        ]
+        .apply(
+            formatta_numero
+        )
+    )
+
+    tabella[
+        "Da fare"
+    ] = (
+        tabella[
+            "Da fare"
+        ]
+        .apply(
+            formatta_numero
+        )
+    )
+
     configurazione = {
 
         "SAL":
@@ -3644,15 +4018,13 @@ def tabella_portafoglio(df):
             ),
 
         "Fatto":
-            st.column_config.NumberColumn(
-                "Giorni fatti",
-                format="%.1f",
+            st.column_config.TextColumn(
+                "Giorni fatti"
             ),
 
         "Da fare":
-            st.column_config.NumberColumn(
-                "Giorni da fare",
-                format="%.1f",
+            st.column_config.TextColumn(
+                "Giorni da fare"
             ),
     }
 
@@ -3884,6 +4256,33 @@ else:
 
 
 # ============================================================
+# ARRICCHIMENTO EPAL E MGIO CON I GIORNI DEI SAL
+# ============================================================
+#
+# I giorni vengono ricavati dai fogli SAL e portati a livello
+# di portafoglio, così possono essere visualizzati anche nelle
+# viste Executive e Avanzamento.
+# ============================================================
+
+portfolio_epal = (
+    arricchisci_portafoglio_con_giorni_sal(
+        portfolio_epal,
+        fogli,
+        sheet_names,
+    )
+)
+
+
+portfolio_mgio = (
+    arricchisci_portafoglio_con_giorni_sal(
+        portfolio_mgio,
+        fogli,
+        sheet_names,
+    )
+)
+
+
+# ============================================================
 # FALLBACK EPAL + MGIO
 # ============================================================
 
@@ -3954,6 +4353,24 @@ portfolio_tutti = (
         portfolio_tutti,
         portfolio_epal,
         portfolio_mgio,
+    )
+)
+
+
+# ============================================================
+# GIORNI DEL PORTAFOGLIO CONSOLIDATO
+# ============================================================
+#
+# Per i progetti condivisi EPAL+MGIO la vista complessiva
+# contiene una sola riga di progetto, ma i giorni sono la somma
+# delle componenti EPAL e MGIO.
+# ============================================================
+
+portfolio_tutti = (
+    arricchisci_portafoglio_con_giorni_sal(
+        portfolio_tutti,
+        fogli,
+        sheet_names,
     )
 )
 
@@ -4545,17 +4962,44 @@ if vista == "Executive":
             "Priorità operative"
         )
 
-
-        st.dataframe(
+        priorita_tabella = (
             priorita[
                 [
                     "Progetto",
                     "Team",
                     "SAL",
                     "Stato",
+                    "Fatto",
                     "Da fare",
                 ]
-            ],
+            ]
+            .copy()
+        )
+
+        priorita_tabella[
+            "Fatto"
+        ] = (
+            priorita_tabella[
+                "Fatto"
+            ]
+            .apply(
+                formatta_numero
+            )
+        )
+
+        priorita_tabella[
+            "Da fare"
+        ] = (
+            priorita_tabella[
+                "Da fare"
+            ]
+            .apply(
+                formatta_numero
+            )
+        )
+
+        st.dataframe(
+            priorita_tabella,
             use_container_width=True,
             hide_index=True,
             column_config={
@@ -4568,10 +5012,14 @@ if vista == "Executive":
                         format="%.1f%%",
                     ),
 
+                "Fatto":
+                    st.column_config.TextColumn(
+                        "Giorni fatti"
+                    ),
+
                 "Da fare":
-                    st.column_config.NumberColumn(
-                        "Giorni da fare",
-                        format="%.1f",
+                    st.column_config.TextColumn(
+                        "Giorni da fare"
                     ),
             },
         )
