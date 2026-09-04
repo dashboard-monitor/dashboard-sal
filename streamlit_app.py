@@ -32,13 +32,6 @@ GANTT_COMBINATI_POSSIBILI = [
     "GANTT_SAL_PROGETTI_MGIO+EPAL",
 ]
 
-TEMPLATE_SAL = {
-    "SAL_ANAL_PRED (EPAL)",
-    "SAL_ANAL_PRED (MGIO)",
-    "SAL_ANAL_PRED (EPAL+MGIO)",
-    "SAL_ANAL_PRED (MGIO+EPAL)",
-}
-
 CACHE_TTL_SECONDS = 300
 
 SOGLIA_INIZIALE = 33.33
@@ -130,7 +123,6 @@ def ora_italiana():
 def pulisci_testo_emoji(text):
     if not text:
         return ""
-    # Rimuove emoji e caratteri speciali non alfanumerici mantenendo gli spazi
     text = re.sub(r"[^\w\s]", " ", str(text))
     return text
 
@@ -1012,26 +1004,9 @@ def aggiungi_flag_condiviso(df, portfolio_epal, portfolio_mgio):
 
 def lista_fogli_sal(sheet_names, team=None):
     risultati = []
-
     for nome in sheet_names:
-        if not normalizza_testo(nome).startswith("sal_"):
-            continue
-
-        tipo = tipo_sal_da_nome(nome)
-
-        if team is None:
+        if normalizza_testo(nome).startswith("sal_"):
             risultati.append(nome)
-            continue
-
-        if team == "EPAL" and tipo in {"EPAL", "EPAL+MGIO"}:
-            risultati.append(nome)
-        elif team == "MGIO" and tipo in {"MGIO", "EPAL+MGIO"}:
-            risultati.append(nome)
-        elif team == "EPAL+MGIO" and tipo == "EPAL+MGIO":
-            risultati.append(nome)
-        elif team not in {"EPAL", "MGIO", "EPAL+MGIO"}:
-            risultati.append(nome)
-
     return risultati
 
 
@@ -1055,7 +1030,7 @@ def chiave_match_progetto(value):
         return ""
 
     testo = normalizza_testo(value)
-    testo = testo.replace("✅", " ").replace("☑", " ").replace("&", " e ")
+    testo = testo.replace("&", " e ")
 
     testo = re.sub(r"\banalisi predittiva\b", "anal pred", testo)
     testo = re.sub(r"\banal pred\b", "anal pred", testo)
@@ -1170,147 +1145,35 @@ def metriche_match_progetto_sal(progetto, nome_foglio):
     }
 
 
-def trova_foglio_sal_rigoroso(
-    progetto, team, sheet_names, tipi_ammessi=None, fogli_esclusi=None,
-    soglia_fuzzy=0.45, margine_minimo=0.02
-):
+def trova_fogli_sal_per_progetto(progetto, sheet_names, fogli_esclusi=None):
     fogli_esclusi = set(fogli_esclusi or [])
+    candidati = [nome for nome in lista_fogli_sal(sheet_names) if nome not in fogli_esclusi]
 
-    candidati = [
-        nome for nome in lista_fogli_sal(sheet_names, None)
-        if nome not in fogli_esclusi
-    ]
-
-    if tipi_ammessi is not None:
-        tipi_ammessi = set(tipi_ammessi)
-        candidati = [nome for nome in candidati if tipo_sal_da_nome(nome) in tipi_ammessi]
-    elif team is not None:
-        team_norm = normalizza_team(team)
-        if team_norm in {"EPAL", "MGIO", "EPAL+MGIO"}:
-            candidati = [nome for nome in candidati if tipo_sal_da_nome(nome) == team_norm]
-
-    if not candidati:
-        return {"foglio": None, "score": 0.0, "metodo": "nessun candidato del team", "ambiguo": False}
-
-    valutazioni = []
+    trovati = []
     for nome in candidati:
         metriche = metriche_match_progetto_sal(progetto, nome)
-        valutazioni.append({"foglio": nome, **metriche})
+        if metriche["esatto"] or metriche["score"] >= 0.40:
+            trovati.append((nome, metriche["score"]))
 
-    esatti = [x for x in valutazioni if x["esatto"]]
-
-    if len(esatti) == 1:
-        return {"foglio": esatti[0]["foglio"], "score": 1.0, "metodo": esatti[0]["metodo"], "ambiguo": False}
-
-    if len(esatti) > 1:
-        return {"foglio": None, "score": 1.0, "metodo": "match esatto ambiguo", "ambiguo": True}
-
-    valutazioni.sort(key=lambda x: x["score"], reverse=True)
-    migliore = valutazioni[0]
-
-    secondo_score = valutazioni[1]["score"] if len(valutazioni) > 1 else 0.0
-    margine = migliore["score"] - secondo_score
-
-    if migliore["score"] >= soglia_fuzzy and margine >= margine_minimo:
-        return {
-            "foglio": migliore["foglio"],
-            "score": migliore["score"],
-            "metodo": migliore["metodo"],
-            "ambiguo": False,
-        }
-
-    return {
-        "foglio": None,
-        "score": migliore["score"],
-        "metodo": "corrispondenza non sufficientemente sicura",
-        "ambiguo": margine < margine_minimo,
-    }
-
-
-def score_match_foglio(progetto, foglio, team=None):
-    if team is not None:
-        tipo = tipo_sal_da_nome(foglio)
-        team_norm = normalizza_team(team)
-        if team_norm in {"EPAL", "MGIO", "EPAL+MGIO"} and tipo != team_norm:
-            return 0.0
-
-    return metriche_match_progetto_sal(progetto, foglio)["score"]
+    trovati.sort(key=lambda x: x[1], reverse=True)
+    return trovati
 
 
 def trova_foglio_sal_migliore(progetto, team, sheet_names):
-    team_norm = normalizza_team(team)
-
-    risultato = trova_foglio_sal_rigoroso(
-        progetto=progetto,
-        team=team_norm,
-        sheet_names=sheet_names,
-        tipi_ammessi={team_norm} if team_norm in {"EPAL", "MGIO", "EPAL+MGIO"} else None,
-    )
-
-    if risultato["foglio"] is not None:
-        return (risultato["foglio"], risultato["score"])
-
-    if team_norm in {"EPAL", "MGIO"}:
-        risultato_combinato = trova_foglio_sal_rigoroso(
-            progetto=progetto,
-            team="EPAL+MGIO",
-            sheet_names=sheet_names,
-            tipi_ammessi={"EPAL+MGIO"},
-        )
-
-        if risultato_combinato["foglio"] is not None:
-            return (risultato_combinato["foglio"], risultato_combinato["score"])
-
-    # Fallback aperto
-    risultato_aperto = trova_foglio_sal_rigoroso(
-        progetto=progetto,
-        team=None,
-        sheet_names=sheet_names,
-        tipi_ammessi=None,
-    )
-
-    return (risultato_aperto["foglio"], risultato_aperto["score"])
+    fogli_match = trova_fogli_sal_per_progetto(progetto, sheet_names)
+    if fogli_match:
+        return (fogli_match[0][0], fogli_match[0][1])
+    return (None, 0.0)
 
 
 # ============================================================
 # GIORNI DI PROGETTO PER LE VISTE DI PORTAFOGLIO
 # ============================================================
 
-def miglior_sal_con_giorni(progetto, team, fogli, sheet_names, tipi_ammessi=None, fogli_esclusi=None):
-    risultato_match = trova_foglio_sal_rigoroso(
-        progetto=progetto,
-        team=team,
-        sheet_names=sheet_names,
-        tipi_ammessi=tipi_ammessi,
-        fogli_esclusi=fogli_esclusi,
-    )
-
-    nome_foglio = risultato_match["foglio"]
-
-    if nome_foglio is None or nome_foglio not in fogli:
-        return None
-
-    riepilogo = calcola_giorni_progetto(fogli[nome_foglio], nome_foglio)
-
-    if not riepilogo["disponibile"]:
-        return None
-
-    return {
-        "foglio": nome_foglio,
-        "score": risultato_match["score"],
-        "metodo": risultato_match["metodo"],
-        "giorni_fatti": riepilogo["giorni_fatti"],
-        "giorni_da_fare": riepilogo["giorni_da_fare"],
-        "giorni_totali": riepilogo["giorni_totali"],
-    }
-
-
 def arricchisci_portafoglio_con_giorni_sal(df, fogli, sheet_names):
     """
     Estrae e calcola i giorni fatti e da fare sommando le singole attività
-    dai fogli SAL di dettaglio (stessa logica usata in 'Dettaglio progetto').
-    Se il progetto è EPAL+MGIO, somma i giorni fatti/da fare del foglio EPAL
-    e del foglio MGIO.
+    dai fogli SAL di dettaglio per tutti i progetti (EPAL, MGIO e EPAL+MGIO).
     """
     if df is None or df.empty:
         return df
@@ -1329,87 +1192,43 @@ def arricchisci_portafoglio_con_giorni_sal(df, fogli, sheet_names):
 
     for idx, riga in out.iterrows():
         progetto = riga["Progetto"]
-        team = normalizza_team(riga.get("Team", "N/D"))
 
-        fatto_tot = float("nan")
-        da_fare_tot = float("nan")
-        fogli_trovati = []
+        fogli_match = trova_fogli_sal_per_progetto(progetto, sheet_names, fogli_esclusi=fogli_usati)
 
-        if team == "EPAL+MGIO":
-            # Cerca foglio EPAL
-            res_epal = miglior_sal_con_giorni(
-                progetto=progetto, team="EPAL", fogli=fogli, sheet_names=sheet_names,
-                tipi_ammessi={"EPAL"}, fogli_esclusi=fogli_usati
-            )
+        if fogli_match:
+            giorni_fatti_list = []
+            giorni_da_fare_list = []
+            fogli_usati_ora = []
 
-            esclusi_mgio = set(fogli_usati)
-            if res_epal is not None:
-                esclusi_mgio.add(res_epal["foglio"])
+            for nome_foglio, score in fogli_match:
+                if nome_foglio in fogli:
+                    riepilogo = calcola_giorni_progetto(fogli[nome_foglio], nome_foglio)
+                    if riepilogo["disponibile"]:
+                        giorni_fatti_list.append(riepilogo["giorni_fatti"])
+                        giorni_da_fare_list.append(riepilogo["giorni_da_fare"])
+                        fogli_usati_ora.append(nome_foglio)
 
-            # Cerca foglio MGIO
-            res_mgio = miglior_sal_con_giorni(
-                progetto=progetto, team="MGIO", fogli=fogli, sheet_names=sheet_names,
-                tipi_ammessi={"MGIO"}, fogli_esclusi=esclusi_mgio
-            )
+            if giorni_fatti_list:
+                out.at[idx, "Fatto"] = sum(giorni_fatti_list)
+                out.at[idx, "Da fare"] = sum(giorni_da_fare_list)
+                out.at[idx, "Fonte giorni"] = "SAL"
+                out.at[idx, "Foglio SAL giorni"] = " + ".join(fogli_usati_ora)
+                out.at[idx, "Metodo associazione giorni"] = "Somma dettaglio SAL"
 
-            g_fatti = []
-            g_da_fare = []
+                for f_nome in fogli_usati_ora:
+                    fogli_usati.add(f_nome)
+            else:
+                fatto_gantt = riga.get("Fatto", float("nan"))
+                da_fare_gantt = riga.get("Da fare", float("nan"))
 
-            if res_epal is not None:
-                g_fatti.append(res_epal["giorni_fatti"])
-                g_da_fare.append(res_epal["giorni_da_fare"])
-                fogli_trovati.append(res_epal["foglio"])
-
-            if res_mgio is not None:
-                g_fatti.append(res_mgio["giorni_fatti"])
-                g_da_fare.append(res_mgio["giorni_da_fare"])
-                fogli_trovati.append(res_mgio["foglio"])
-
-            if g_fatti:
-                fatto_tot = sum(g_fatti)
-                da_fare_tot = sum(g_da_fare)
-
-            # Fallback a foglio unico combinato
-            if pd.isna(fatto_tot):
-                res_comb = miglior_sal_con_giorni(
-                    progetto=progetto, team="EPAL+MGIO", fogli=fogli, sheet_names=sheet_names,
-                    tipi_ammessi={"EPAL+MGIO"}, fogli_esclusi=fogli_usati
-                )
-                if res_comb is not None:
-                    fatto_tot = res_comb["giorni_fatti"]
-                    da_fare_tot = res_comb["giorni_da_fare"]
-                    fogli_trovati.append(res_comb["foglio"])
-
+                if pd.notna(fatto_gantt) and pd.notna(da_fare_gantt):
+                    out.at[idx, "Fatto"] = fatto_gantt
+                    out.at[idx, "Da fare"] = da_fare_gantt
+                    out.at[idx, "Fonte giorni"] = "GANTT"
+                    out.at[idx, "Metodo associazione giorni"] = "Dati GANTT"
+                else:
+                    out.at[idx, "Fonte giorni"] = "N/D"
         else:
-            # Singolo team EPAL o MGIO
-            res = miglior_sal_con_giorni(
-                progetto=progetto, team=team, fogli=fogli, sheet_names=sheet_names,
-                tipi_ammessi={team} if team in {"EPAL", "MGIO"} else None, fogli_esclusi=fogli_usati
-            )
-
-            if res is None:
-                # Fallback combinato o aperto
-                res = miglior_sal_con_giorni(
-                    progetto=progetto, team=None, fogli=fogli, sheet_names=sheet_names,
-                    fogli_esclusi=fogli_usati
-                )
-
-            if res is not None:
-                fatto_tot = res["giorni_fatti"]
-                da_fare_tot = res["giorni_da_fare"]
-                fogli_trovati.append(res["foglio"])
-
-        if pd.notna(fatto_tot) and pd.notna(da_fare_tot):
-            out.at[idx, "Fatto"] = fatto_tot
-            out.at[idx, "Da fare"] = da_fare_tot
-            out.at[idx, "Fonte giorni"] = "SAL"
-            out.at[idx, "Foglio SAL giorni"] = " + ".join(fogli_trovati)
-            out.at[idx, "Metodo associazione giorni"] = "Somma dettaglio SAL"
-
-            for f_nome in fogli_trovati:
-                fogli_usati.add(f_nome)
-        else:
-            # Tenta fallback su dati GANTT se la scheda SAL non esiste
             fatto_gantt = riga.get("Fatto", float("nan"))
             da_fare_gantt = riga.get("Da fare", float("nan"))
 
@@ -1419,8 +1238,6 @@ def arricchisci_portafoglio_con_giorni_sal(df, fogli, sheet_names):
                 out.at[idx, "Fonte giorni"] = "GANTT"
                 out.at[idx, "Metodo associazione giorni"] = "Dati GANTT"
             else:
-                out.at[idx, "Fatto"] = float("nan")
-                out.at[idx, "Da fare"] = float("nan")
                 out.at[idx, "Fonte giorni"] = "N/D"
 
     return out
