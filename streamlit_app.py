@@ -1,6 +1,6 @@
 import re
 import unicodedata
-from diffllib import SequenceMatcher
+from difflib import SequenceMatcher
 from datetime import datetime
 from io import BytesIO
 from urllib.request import Request, urlopen
