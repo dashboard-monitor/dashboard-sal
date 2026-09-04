@@ -1,11 +1,10 @@
 import re
 import unicodedata
 from datetime import datetime
+from difflib import SequenceMatcher
 from io import BytesIO
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
-from diffllib import SequenceMatcher if False else None
-from difflib import SequenceMatcher
 
 import pandas as pd
 import plotly.express as px
@@ -128,11 +127,32 @@ def ora_italiana():
         return datetime.now()
 
 
+def pulisci_testo_emoji(text):
+    if not text or pd.isna(text):
+        return ""
+    text = str(text)
+    text = re.sub(r"[^\w\s\(\)\+\&\.-]", " ", text)
+    return text
+
+
+def pulisci_nome_progetto_per_match(text):
+    if not text or pd.isna(text):
+        return ""
+    text = pulisci_testo_emoji(text)
+    def filtri_parentesi(match):
+        inner = match.group(1).upper().replace(" ", "")
+        if inner in ["EPAL", "MGIO", "EPAL+MGIO", "MGIO+EPAL"]:
+            return match.group(0)
+        return " "
+    text = re.sub(r"\(([^)]*)\)", filtri_parentesi, text)
+    text = text.replace("_", " ")
+    return normalizza_testo(text)
+
+
 def normalizza_testo(value):
     if value is None or pd.isna(value):
         return ""
-    text = str(value)
-    text = re.sub(r"[^\w\s\(\)\+\&\.-]", " ", text)
+    text = pulisci_testo_emoji(value)
     text = unicodedata.normalize("NFKD", str(text))
     text = "".join(c for c in text if not unicodedata.combining(c))
     text = re.sub(r"\s+", " ", text.lower().strip())
@@ -1110,6 +1130,9 @@ def arricchisci_portafoglio_con_giorni_sal(df, fogli, sheet_names):
         return df
 
     out = df.copy()
+
+    out["Fatto"] = float("nan")
+    out["Da fare"] = float("nan")
 
     fogli_sal = lista_fogli_sal(sheet_names)
 
