@@ -1039,8 +1039,15 @@ def lista_fogli_sal(sheet_names, team=None):
 
 
 # ============================================================
-# MATCH AUTOMATICO PROGETTO -> SAL
+# MAPPA E MATCHING DEGLI INDICATORI SAL
 # ============================================================
+
+def calcola_totali_foglio_sal(df_sal, nome_foglio):
+    riepilogo = calcola_giorni_progetto(df_sal, nome_foglio)
+    if riepilogo["disponibile"]:
+        return riepilogo["giorni_fatti"], riepilogo["giorni_da_fare"]
+    return None, None
+
 
 def estrai_nome_progetto_da_foglio_sal(nome_foglio):
     if nome_foglio is None:
@@ -1053,68 +1060,81 @@ def estrai_nome_progetto_da_foglio_sal(nome_foglio):
     return re.sub(r"\s+", " ", testo).strip()
 
 
-def estrai_varianti_nome(testo):
-    if not testo or pd.isna(testo):
+def mappa_tutti_i_sal(fogli):
+    mappa_sal = []
+    for nome_foglio, df_sal in fogli.items():
+        norm_nome = normalizza_testo(nome_foglio)
+        if not norm_nome.startswith("sal"):
+            continue
+        if "gantt" in norm_nome or nome_foglio in TEMPLATE_SAL:
+            continue
+
+        tot_f, tot_df = calcola_totali_foglio_sal(df_sal, nome_foglio)
+        nome_p = estrai_nome_progetto_da_foglio_sal(nome_foglio)
+
+        mappa_sal.append({
+            "foglio": nome_foglio,
+            "nome_p": nome_p,
+            "chiave_p": chiave_progetto(nome_p),
+            "tokens_p": tokenizza(nome_p),
+            "tipo": tipo_sal_da_nome(nome_foglio),
+            "fatto": tot_f,
+            "da_fare": tot_df,
+        })
+    return mappa_sal
+
+
+def trova_sal_corrispondenti(progetto_nome, mappa_sal):
+    if not progetto_nome or pd.isna(progetto_nome):
         return []
-    s = str(testo).strip()
-    s = re.sub(r"[^\w\s\(\)\+\&\.-]", " ", s)
-    varianti = [s]
-    senza_parentesi = re.sub(r"\([^)]*\)", " ", s).strip()
-    if senza_parentesi and senza_parentesi != s:
-        varianti.append(senza_parentesi)
-    return varianti
 
-
-def calcola_match_score(nome1, nome2):
-    k1_set = [chiave_progetto(v) for v in estrai_varianti_nome(nome1)]
-    k2_set = [chiave_progetto(v) for v in estrai_varianti_nome(nome2)]
-
-    max_s = 0.0
-    for c1 in k1_set:
-        for c2 in k2_set:
-            if not c1 or not c2:
-                continue
-            if c1 == c2:
-                return 1.0
-            if c1 in c2 or c2 in c1:
-                len_ratio = min(len(c1), len(c2)) / max(len(c1), len(c2))
-                if len_ratio >= 0.35:
-                    max_s = max(max_s, 0.9)
-            t1 = tokenizza(c1)
-            t2 = tokenizza(c2)
-            if t1 and t2:
-                if t1.issubset(t2) or t2.issubset(t1):
-                    max_s = max(max_s, 0.85)
-                inter = t1 & t2
-                union = t1 | t2
-                if union:
-                    jaccard = len(inter) / len(union)
-                    max_s = max(max_s, jaccard)
-            sm = SequenceMatcher(None, c1, c2).ratio()
-            max_s = max(max_s, sm)
-    return max_s
-
-
-def trova_fogli_sal_per_progetto(progetto, sheet_names, fogli_esclusi=None):
-    fogli_esclusi = set(fogli_esclusi or [])
-    candidati = [nome for nome in lista_fogli_sal(sheet_names) if nome not in fogli_esclusi]
+    p_pulisce = pulisci_nome_progetto_per_match(progetto_nome)
+    p_chiave = chiave_progetto(p_pulisce)
+    p_tokens = tokenizza(p_pulisce)
 
     trovati = []
-    for nome in candidati:
-        nome_proj_sal = estrai_nome_progetto_da_foglio_sal(nome)
-        score = calcola_match_score(progetto, nome_proj_sal)
-        if score >= 0.40:
-            trovati.append((nome, score, tipo_sal_da_nome(nome)))
+    for item in mappa_sal:
+        k_sal = item["chiave_p"]
+        t_sal = item["tokens_p"]
 
-    trovati.sort(key=lambda x: x[1], reverse=True)
+        if not k_sal:
+            continue
+
+        # Match chiave esatta o inclusione testuale
+        if k_sal == p_chiave or k_sal in p_chiave or p_chiave in k_sal:
+            trovati.append(item)
+            continue
+
+        # Match token
+        if t_sal and (t_sal.issubset(p_tokens) or p_tokens.issubset(t_sal)):
+            trovati.append(item)
+            continue
+
+        inter = t_sal & p_tokens
+        if inter and (len(inter) / min(len(t_sal), len(p_tokens))) >= 0.5:
+            trovati.append(item)
+            continue
+
+        if SequenceMatcher(None, k_sal, p_chiave).ratio() >= 0.65:
+            trovati.append(item)
+            continue
+
     return trovati
 
 
 def trova_foglio_sal_migliore(progetto, team, sheet_names):
-    fogli_match = trova_fogli_sal_per_progetto(progetto, sheet_names)
-    if fogli_match:
-        return (fogli_match[0][0], fogli_match[0][1])
-    return (None, 0.0)
+    candidati = lista_fogli_sal(sheet_names)
+    scores = []
+    for nome in candidati:
+        n_p = estrai_nome_progetto_da_foglio_sal(nome)
+        c_proj = chiave_progetto(progetto)
+        c_sal = chiave_progetto(n_p)
+        sc = SequenceMatcher(None, c_proj, c_sal).ratio()
+        scores.append((nome, sc))
+    scores.sort(key=lambda x: x[1], reverse=True)
+    if scores:
+        return scores[0]
+    return None, 0.0
 
 
 # ============================================================
@@ -1123,75 +1143,43 @@ def trova_foglio_sal_migliore(progetto, team, sheet_names):
 
 def arricchisci_portafoglio_con_giorni_sal(df, fogli, sheet_names):
     """
-    Estrae e calcola i giorni fatti e da fare sommando le singole attività
-    dai fogli SAL di dettaglio per tutti i progetti (EPAL, MGIO e EPAL+MGIO).
-    Seleziona esattamente 1 solo foglio SAL per team (o max 1 EPAL + 1 MGIO).
+    Calcola la somma dei giorni fatti e da fare sommando le righe delle attività
+    dei fogli SAL di dettaglio per ciascun progetto in Executive.
     """
     if df is None or df.empty:
         return df
 
     out = df.copy()
+    mappa_sal = mappa_tutti_i_sal(fogli)
 
     out["Fatto"] = float("nan")
     out["Da fare"] = float("nan")
 
-    fogli_usati = set()
-
     for idx in out.index:
         progetto = out.at[idx, "Progetto"]
-        team = normalizza_team(out.at[idx, "Team"]) if "Team" in out.columns else "N/D"
+        fogli_trovati = trova_sal_corrispondenti(progetto, mappa_sal)
 
-        fogli_match = trova_fogli_sal_per_progetto(progetto, sheet_names, fogli_esclusi=fogli_usati)
+        fatto_somma = 0.0
+        da_fare_somma = 0.0
+        almeno_uno_valido = False
 
-        giorni_fatti_tot = 0.0
-        giorni_da_fare_tot = 0.0
-        trovato = False
+        for item in fogli_trovati:
+            f = item["fatto"]
+            df_val = item["da_fare"]
+            if pd.notna(f) or pd.notna(df_val):
+                fatto_somma += (f if pd.notna(f) else 0.0)
+                da_fare_somma += (df_val if pd.notna(df_val) else 0.0)
+                almeno_uno_valido = True
 
-        if team == "EPAL+MGIO":
-            foglio_epal = next((m[0] for m in fogli_match if m[2] == "EPAL"), None)
-            foglio_mgio = next((m[0] for m in fogli_match if m[2] == "MGIO"), None)
-            foglio_comb = next((m[0] for m in fogli_match if m[2] == "EPAL+MGIO"), None)
-
-            fogli_da_elaborare = []
-            if foglio_epal and foglio_mgio:
-                fogli_da_elaborare = [foglio_epal, foglio_mgio]
-            elif foglio_comb:
-                fogli_da_elaborare = [foglio_comb]
-            elif foglio_epal:
-                fogli_da_elaborare = [foglio_epal]
-            elif foglio_mgio:
-                fogli_da_elaborare = [foglio_mgio]
-            elif fogli_match:
-                fogli_da_elaborare = [fogli_match[0][0]]
-
-            for f_nome in fogli_da_elaborare:
-                if f_nome in fogli:
-                    res = calcola_giorni_progetto(fogli[f_nome], f_nome)
-                    if res["disponibile"]:
-                        giorni_fatti_tot += res["giorni_fatti"]
-                        giorni_da_fare_tot += res["giorni_da_fare"]
-                        trovato = True
-                        fogli_usati.add(f_nome)
-
+        if almeno_uno_valido:
+            out.at[idx, "Fatto"] = fatto_somma
+            out.at[idx, "Da fare"] = da_fare_somma
         else:
-            foglio_singolo = None
-            if fogli_match:
-                foglio_singolo = next((m[0] for m in fogli_match if m[2] == team), fogli_match[0][0])
-
-            if foglio_singolo and foglio_singolo in fogli:
-                res = calcola_giorni_progetto(fogli[foglio_singolo], foglio_singolo)
-                if res["disponibile"]:
-                    giorni_fatti_tot = res["giorni_fatti"]
-                    giorni_da_fare_tot = res["giorni_da_fare"]
-                    trovato = True
-                    fogli_usati.add(foglio_singolo)
-
-        if trovato:
-            out.at[idx, "Fatto"] = giorni_fatti_tot
-            out.at[idx, "Da fare"] = giorni_da_fare_tot
-        else:
-            out.at[idx, "Fatto"] = float("nan")
-            out.at[idx, "Da fare"] = float("nan")
+            orig_f = df.at[idx, "Fatto"] if "Fatto" in df.columns else float("nan")
+            orig_df = df.at[idx, "Da fare"] if "Da fare" in df.columns else float("nan")
+            if pd.notna(orig_f) and pd.notna(orig_df):
+                out.at[idx, "Fatto"] = orig_f
+                out.at[idx, "Da fare"] = orig_df
 
     return out
 
