@@ -1,10 +1,11 @@
 import re
 import unicodedata
-from difflib import SequenceMatcher
 from datetime import datetime
 from io import BytesIO
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
+from diffllib import SequenceMatcher if False else None
+from difflib import SequenceMatcher
 
 import pandas as pd
 import plotly.express as px
@@ -127,32 +128,11 @@ def ora_italiana():
         return datetime.now()
 
 
-def pulisci_testo_emoji(text):
-    if not text or pd.isna(text):
-        return ""
-    text = str(text)
-    text = re.sub(r"[^\w\s\(\)\+\&\.-]", " ", text)
-    return text
-
-
-def pulisci_nome_progetto_per_match(text):
-    if not text or pd.isna(text):
-        return ""
-    text = pulisci_testo_emoji(text)
-    def filtri_parentesi(match):
-        inner = match.group(1).upper().replace(" ", "")
-        if inner in ["EPAL", "MGIO", "EPAL+MGIO", "MGIO+EPAL"]:
-            return match.group(0)
-        return " "
-    text = re.sub(r"\(([^)]*)\)", filtri_parentesi, text)
-    text = text.replace("_", " ")
-    return normalizza_testo(text)
-
-
 def normalizza_testo(value):
     if value is None or pd.isna(value):
         return ""
-    text = pulisci_testo_emoji(value)
+    text = str(value)
+    text = re.sub(r"[^\w\s\(\)\+\&\.-]", " ", text)
     text = unicodedata.normalize("NFKD", str(text))
     text = "".join(c for c in text if not unicodedata.combining(c))
     text = re.sub(r"\s+", " ", text.lower().strip())
@@ -535,7 +515,6 @@ def trova_colonne_giorni_sal(df, nome_foglio):
     if col_fatto is not None and col_da_fare is not None:
         return (col_fatto, col_da_fare, "intestazioni del foglio SAL")
 
-    # Fallback universale sulle colonne H (indice 7) e I (indice 8)
     if len(df.columns) >= 9:
         candidato_fatto = col_fatto if col_fatto is not None else df.columns[7]
         candidato_da_fare = col_da_fare if col_da_fare is not None else df.columns[8]
@@ -1054,120 +1033,46 @@ def estrai_nome_progetto_da_foglio_sal(nome_foglio):
     return re.sub(r"\s+", " ", testo).strip()
 
 
-def chiave_match_progetto(value):
-    if value is None:
-        return ""
-
-    testo = normalizza_testo(value)
-    testo = testo.replace("&", " e ")
-
-    testo = re.sub(r"\banalisi predittiva\b", "anal pred", testo)
-    testo = re.sub(r"\banal pred\b", "anal pred", testo)
-
-    testo = re.sub(r"[^a-z0-9]+", " ", testo)
-    return re.sub(r"\s+", " ", testo).strip()
-
-
-def chiave_compatta_match(value):
-    return re.sub(r"[^a-z0-9]", "", chiave_match_progetto(value))
-
-
-def varianti_match_progetto(value):
-    if value is None:
-        return set()
-
-    testo_originale = pulisci_nome_progetto_per_match(value).strip()
-    if not testo_originale:
-        return set()
-
-    parti = {testo_originale}
-
-    for contenuto in re.findall(r"\(([^)]*)\)", testo_originale):
-        contenuto = contenuto.strip()
-        if contenuto:
-            parti.add(contenuto)
-
-    varianti = set()
-    for parte in parti:
-        chiave = chiave_match_progetto(parte)
-        compatta = chiave_compatta_match(parte)
-
-        if chiave:
-            varianti.add(chiave)
-        if compatta:
-            varianti.add(compatta)
-
+def estrai_varianti_nome(testo):
+    if not testo or pd.isna(testo):
+        return []
+    s = str(testo).strip()
+    s = re.sub(r"[^\w\s\(\)\+\&\.-]", " ", s)
+    varianti = [s]
+    senza_parentesi = re.sub(r"\([^)]*\)", " ", s).strip()
+    if senza_parentesi and senza_parentesi != s:
+        varianti.append(senza_parentesi)
     return varianti
 
 
-def token_match_progetto(value):
-    testo = chiave_match_progetto(value)
-    stopwords = {
-        "srl", "spa", "sas", "snc", "societa", "soc", "coop", "cooperativa",
-        "benefit", "e", "dei", "del", "della", "dello", "degli", "di", "da",
-        "in", "con", "su", "per", "tra", "fra",
-    }
+def calcola_match_score(nome1, nome2):
+    k1_set = [chiave_progetto(v) for v in estrai_varianti_nome(nome1)]
+    k2_set = [chiave_progetto(v) for v in estrai_varianti_nome(nome2)]
 
-    return {
-        token for token in testo.split()
-        if len(token) >= 2 and token not in stopwords
-    }
-
-
-def metriche_match_progetto_sal(progetto, nome_foglio):
-    nome_sal = estrai_nome_progetto_da_foglio_sal(nome_foglio)
-    varianti_progetto = varianti_match_progetto(progetto)
-    varianti_sal = varianti_match_progetto(nome_sal)
-
-    if not varianti_progetto or not varianti_sal:
-        return {
-            "esatto": False, "score": 0.0, "similarita": 0.0, "jaccard": 0.0,
-            "metodo": "nessuna corrispondenza",
-        }
-
-    # 1. Match Esatto
-    if varianti_progetto & varianti_sal:
-        return {
-            "esatto": True, "score": 1.0, "similarita": 1.0, "jaccard": 1.0,
-            "metodo": "nome esatto",
-        }
-
-    tokens_progetto = token_match_progetto(progetto)
-    tokens_sal = token_match_progetto(nome_sal)
-
-    # 2. Match per sottoinsieme di token
-    if tokens_progetto and tokens_sal:
-        if tokens_sal.issubset(tokens_progetto) or tokens_progetto.issubset(tokens_sal):
-            return {
-                "esatto": False, "score": 0.95, "similarita": 0.95, "jaccard": 1.0,
-                "metodo": "inclusione token",
-            }
-
-    # 3. Match per contenimento
-    for a in varianti_progetto:
-        for b in varianti_sal:
-            if a and b and (a in b or b in a):
-                return {
-                    "esatto": False, "score": 0.90, "similarita": 0.90, "jaccard": 0.90,
-                    "metodo": "contenimento testo",
-                }
-
-    # 4. Fuzzy Match
-    progetto_chiave = chiave_match_progetto(progetto)
-    sal_chiave = chiave_match_progetto(nome_sal)
-
-    similarita = SequenceMatcher(None, progetto_chiave, sal_chiave).ratio()
-
-    unione = tokens_progetto | tokens_sal
-    intersezione = tokens_progetto & tokens_sal
-    jaccard = len(intersezione) / len(unione) if unione else 0.0
-
-    score = (0.7 * similarita) + (0.3 * jaccard)
-
-    return {
-        "esatto": False, "score": score, "similarita": similarita, "jaccard": jaccard,
-        "metodo": "fuzzy controllato",
-    }
+    max_s = 0.0
+    for c1 in k1_set:
+        for c2 in k2_set:
+            if not c1 or not c2:
+                continue
+            if c1 == c2:
+                return 1.0
+            if c1 in c2 or c2 in c1:
+                len_ratio = min(len(c1), len(c2)) / max(len(c1), len(c2))
+                if len_ratio >= 0.35:
+                    max_s = max(max_s, 0.9)
+            t1 = tokenizza(c1)
+            t2 = tokenizza(c2)
+            if t1 and t2:
+                if t1.issubset(t2) or t2.issubset(t1):
+                    max_s = max(max_s, 0.85)
+                inter = t1 & t2
+                union = t1 | t2
+                if union:
+                    jaccard = len(inter) / len(union)
+                    max_s = max(max_s, jaccard)
+            sm = SequenceMatcher(None, c1, c2).ratio()
+            max_s = max(max_s, sm)
+    return max_s
 
 
 def trova_fogli_sal_per_progetto(progetto, sheet_names, fogli_esclusi=None):
@@ -1176,9 +1081,10 @@ def trova_fogli_sal_per_progetto(progetto, sheet_names, fogli_esclusi=None):
 
     trovati = []
     for nome in candidati:
-        metriche = metriche_match_progetto_sal(progetto, nome)
-        if metriche["esatto"] or metriche["score"] >= 0.30:
-            trovati.append((nome, metriche["score"]))
+        nome_proj_sal = estrai_nome_progetto_da_foglio_sal(nome)
+        score = calcola_match_score(progetto, nome_proj_sal)
+        if score >= 0.40:
+            trovati.append((nome, score, tipo_sal_da_nome(nome)))
 
     trovati.sort(key=lambda x: x[1], reverse=True)
     return trovati
@@ -1205,37 +1111,71 @@ def arricchisci_portafoglio_con_giorni_sal(df, fogli, sheet_names):
 
     out = df.copy()
 
-    out["Fatto"] = float("nan")
-    out["Da fare"] = float("nan")
-
-    fogli_usati = set()
+    fogli_sal = lista_fogli_sal(sheet_names)
 
     for idx in out.index:
         progetto = out.at[idx, "Progetto"]
-        fogli_match = trova_fogli_sal_per_progetto(progetto, sheet_names, fogli_esclusi=fogli_usati)
+        team = normalizza_team(out.at[idx, "Team"]) if "Team" in out.columns else "N/D"
+
+        matches = []
+        for sheet in fogli_sal:
+            nome_proj_sal = estrai_nome_progetto_da_foglio_sal(sheet)
+            score = calcola_match_score(progetto, nome_proj_sal)
+            if score >= 0.40:
+                matches.append((sheet, score, tipo_sal_da_nome(sheet)))
+
+        matches.sort(key=lambda x: x[1], reverse=True)
 
         giorni_fatti_tot = 0.0
         giorni_da_fare_tot = 0.0
-        almeno_un_foglio_valido = False
-        fogli_trovati_ora = []
+        trovato = False
 
-        for nome_foglio, score in fogli_match:
-            if nome_foglio in fogli:
-                riepilogo = calcola_giorni_progetto(fogli[nome_foglio], nome_foglio)
-                if riepilogo["disponibile"]:
-                    giorni_fatti_tot += riepilogo["giorni_fatti"]
-                    giorni_da_fare_tot += riepilogo["giorni_da_fare"]
-                    almeno_un_foglio_valido = True
-                    fogli_trovati_ora.append(nome_foglio)
+        if team == "EPAL+MGIO":
+            sheet_epal = next((m[0] for m in matches if m[2] == "EPAL"), None)
+            sheet_mgio = next((m[0] for m in matches if m[2] == "MGIO"), None)
+            sheet_comb = next((m[0] for m in matches if m[2] == "EPAL+MGIO"), None)
 
-        if almeno_un_foglio_valido:
+            fogli_da_sommare = []
+            if sheet_epal and sheet_mgio:
+                fogli_da_sommare = [sheet_epal, sheet_mgio]
+            elif sheet_comb:
+                fogli_da_sommare = [sheet_comb]
+            elif sheet_epal:
+                fogli_da_sommare = [sheet_epal]
+            elif sheet_mgio:
+                fogli_da_sommare = [sheet_mgio]
+            elif matches:
+                fogli_da_sommare = [m[0] for m in matches[:2]]
+
+            for f_nome in fogli_da_sommare:
+                if f_nome in fogli:
+                    res = calcola_giorni_progetto(fogli[f_nome], f_nome)
+                    if res["disponibile"]:
+                        giorni_fatti_tot += res["giorni_fatti"]
+                        giorni_da_fare_tot += res["giorni_da_fare"]
+                        trovato = True
+
+        else:
+            sheet_spec = next((m[0] for m in matches if m[2] == team), None)
+            if not sheet_spec and matches:
+                sheet_spec = matches[0][0]
+
+            if sheet_spec and sheet_spec in fogli:
+                res = calcola_giorni_progetto(fogli[sheet_spec], sheet_spec)
+                if res["disponibile"]:
+                    giorni_fatti_tot = res["giorni_fatti"]
+                    giorni_da_fare_tot = res["giorni_da_fare"]
+                    trovato = True
+
+        if trovato:
             out.at[idx, "Fatto"] = giorni_fatti_tot
             out.at[idx, "Da fare"] = giorni_da_fare_tot
-            for f_nome in fogli_trovati_ora:
-                fogli_usati.add(f_nome)
         else:
-            out.at[idx, "Fatto"] = float("nan")
-            out.at[idx, "Da fare"] = float("nan")
+            orig_fatto = out.at[idx, "Fatto"] if "Fatto" in out.columns else float("nan")
+            orig_da_fare = out.at[idx, "Da fare"] if "Da fare" in out.columns else float("nan")
+            if pd.isna(orig_fatto) or pd.isna(orig_da_fare):
+                out.at[idx, "Fatto"] = float("nan")
+                out.at[idx, "Da fare"] = float("nan")
 
     return out
 
@@ -1712,7 +1652,7 @@ st.caption(
 
 st.sidebar.title("Controlli")
 
-if st.sidebar.button("Aggiorna dati", icon=":material/refresh:", use_container_width=True):
+if st.sidebar.button("🔄 Aggiorna dati", use_container_width=True):
     st.cache_data.clear()
     st.rerun()
 
