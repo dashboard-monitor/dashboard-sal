@@ -32,6 +32,13 @@ GANTT_COMBINATI_POSSIBILI = [
     "GANTT_SAL_PROGETTI_MGIO+EPAL",
 ]
 
+TEMPLATE_SAL = {
+    "SAL_ANAL_PRED (EPAL)",
+    "SAL_ANAL_PRED (MGIO)",
+    "SAL_ANAL_PRED (EPAL+MGIO)",
+    "SAL_ANAL_PRED (MGIO+EPAL)",
+}
+
 CACHE_TTL_SECONDS = 300
 
 SOGLIA_INIZIALE = 33.33
@@ -124,8 +131,24 @@ def pulisci_testo_emoji(text):
     if not text or pd.isna(text):
         return ""
     text = str(text)
+    # Rimuove simboli, emoji e spunte
     text = re.sub(r"[^\w\s\(\)\+\&\.-]", " ", text)
     return text
+
+
+def pulisci_nome_progetto_per_match(text):
+    if not text or pd.isna(text):
+        return ""
+    text = pulisci_testo_emoji(text)
+    # Preserva (EPAL), (MGIO), (EPAL+MGIO) ma rimuove altre parentesi (es. ruoli o luoghi)
+    def filtri_parentesi(match):
+        inner = match.group(1).upper().replace(" ", "")
+        if inner in ["EPAL", "MGIO", "EPAL+MGIO", "MGIO+EPAL"]:
+            return match.group(0)
+        return " "
+    text = re.sub(r"\(([^)]*)\)", filtri_parentesi, text)
+    text = text.replace("_", " ")
+    return normalizza_testo(text)
 
 
 def normalizza_testo(value):
@@ -150,6 +173,7 @@ def tokenizza(value):
         "sal", "epal", "mgio", "progetto", "progetti", "gantt",
         "anal", "pred", "minipia", "srl", "spa", "soc", "coop", "cooperativa",
         "benefit", "e", "dei", "del", "della", "dello", "degli", "di", "da",
+        "le", "la", "il", "l",
     }
     return {
         token for token in text.split()
@@ -1055,15 +1079,11 @@ def varianti_match_progetto(value):
     if value is None:
         return set()
 
-    testo_originale = pulisci_testo_emoji(value).strip()
+    testo_originale = pulisci_nome_progetto_per_match(value).strip()
     if not testo_originale:
         return set()
 
     parti = {testo_originale}
-
-    senza_parentesi = re.sub(r"\([^)]*\)", " ", testo_originale).strip()
-    if senza_parentesi:
-        parti.add(senza_parentesi)
 
     for contenuto in re.findall(r"\(([^)]*)\)", testo_originale):
         contenuto = contenuto.strip()
@@ -1160,7 +1180,7 @@ def trova_fogli_sal_per_progetto(progetto, sheet_names, fogli_esclusi=None):
     trovati = []
     for nome in candidati:
         metriche = metriche_match_progetto_sal(progetto, nome)
-        if metriche["esatto"] or metriche["score"] >= 0.35:
+        if metriche["esatto"] or metriche["score"] >= 0.30:
             trovati.append((nome, metriche["score"]))
 
     trovati.sort(key=lambda x: x[1], reverse=True)
@@ -1182,64 +1202,86 @@ def arricchisci_portafoglio_con_giorni_sal(df, fogli, sheet_names):
     """
     Estrae e calcola i giorni fatti e da fare sommando le singole attività
     dai fogli SAL di dettaglio per tutti i progetti (EPAL, MGIO e EPAL+MGIO).
-    Preserva i dati originali del GANTT come fallback sicuro.
     """
     if df is None or df.empty:
         return df
 
     out = df.copy()
 
-    # Copie di backup per non perdere i dati GANTT originali
-    gantt_fatto = out["Fatto"].copy() if "Fatto" in out.columns else pd.Series(float("nan"), index=out.index)
-    gantt_da_fare = out["Da fare"].copy() if "Da fare" in out.columns else pd.Series(float("nan"), index=out.index)
-
-    out["Fonte giorni"] = ""
-    out["Foglio SAL giorni"] = ""
-    out["Metodo associazione giorni"] = ""
-    out["Score associazione giorni"] = float("nan")
+    out["Fatto"] = float("nan")
+    out["Da fare"] = float("nan")
 
     fogli_usati = set()
 
     for idx in out.index:
         progetto = out.at[idx, "Progetto"]
-        orig_fatto = gantt_fatto.loc[idx]
-        orig_da_fare = gantt_da_fare.loc[idx]
+        team = normalizza_team(out.at[idx, "Team"]) if "Team" in out.columns else "N/D"
 
         fogli_match = trova_fogli_sal_per_progetto(progetto, sheet_names, fogli_esclusi=fogli_usati)
 
-        giorni_fatti_list = []
-        giorni_da_fare_list = []
-        fogli_usati_ora = []
+        giorni_fatti_tot = 0.0
+        giorni_da_fare_tot = 0.0
+        almeno_un_foglio_valido = False
 
-        if fogli_match:
-            for nome_foglio, score in fogli_match:
-                if nome_foglio in fogli:
-                    riepilogo = calcola_giorni_progetto(fogli[nome_foglio], nome_foglio)
-                    if riepilogo["disponibile"]:
-                        giorni_fatti_list.append(riepilogo["giorni_fatti"])
-                        giorni_da_fare_list.append(riepilogo["giorni_da_fare"])
-                        fogli_usati_ora.append(nome_foglio)
+        if team == "EPAL+MGIO":
+            foglio_epal = None
+            foglio_mgio = None
+            foglio_comb = None
 
-        if giorni_fatti_list:
-            out.at[idx, "Fatto"] = sum(giorni_fatti_list)
-            out.at[idx, "Da fare"] = sum(giorni_da_fare_list)
-            out.at[idx, "Fonte giorni"] = "SAL"
-            out.at[idx, "Foglio SAL giorni"] = " + ".join(fogli_usati_ora)
-            out.at[idx, "Metodo associazione giorni"] = "Somma dettaglio SAL"
+            for s_nome, score in fogli_match:
+                s_norm = normalizza_testo(s_nome)
+                if "(epal)" in s_norm and not foglio_epal:
+                    foglio_epal = s_nome
+                elif "(mgio)" in s_norm and not foglio_mgio:
+                    foglio_mgio = s_nome
+                elif ("(epal+mgio)" in s_norm or "(mgio+epal)" in s_norm) and not foglio_comb:
+                    foglio_comb = s_nome
 
-            for f_nome in fogli_usati_ora:
-                fogli_usati.add(f_nome)
+            fogli_da_sommare = []
+            if foglio_epal:
+                fogli_da_sommare.append(foglio_epal)
+            if foglio_mgio:
+                fogli_da_sommare.append(foglio_mgio)
+            if not fogli_da_sommare and foglio_comb:
+                fogli_da_sommare.append(foglio_comb)
+
+            if not fogli_da_sommare and fogli_match:
+                fogli_da_sommare = [fogli_match[0][0]]
+                if len(fogli_match) > 1 and fogli_match[1][1] >= 0.5:
+                    fogli_da_sommare.append(fogli_match[1][0])
+
+            for f_nome in fogli_da_sommare:
+                if f_nome in fogli:
+                    res = calcola_giorni_progetto(fogli[f_nome], f_nome)
+                    if res["disponibile"]:
+                        giorni_fatti_tot += res["giorni_fatti"]
+                        giorni_da_fare_tot += res["giorni_da_fare"]
+                        almeno_un_foglio_valido = True
+                        fogli_usati.add(f_nome)
+
         else:
-            # Fallback ai dati GANTT originali se presenti
-            if pd.notna(orig_fatto) and pd.notna(orig_da_fare):
-                out.at[idx, "Fatto"] = orig_fatto
-                out.at[idx, "Da fare"] = orig_da_fare
-                out.at[idx, "Fonte giorni"] = "GANTT"
-                out.at[idx, "Metodo associazione giorni"] = "Dati GANTT"
-            else:
-                out.at[idx, "Fatto"] = float("nan")
-                out.at[idx, "Da fare"] = float("nan")
-                out.at[idx, "Fonte giorni"] = "N/D"
+            foglio_scelto = None
+            for s_nome, score in fogli_match:
+                if s_nome not in fogli_usati:
+                    foglio_scelto = s_nome
+                    break
+            if not foglio_scelto and fogli_match:
+                foglio_scelto = fogli_match[0][0]
+
+            if foglio_scelto and foglio_scelto in fogli:
+                res = calcola_giorni_progetto(fogli[foglio_scelto], foglio_scelto)
+                if res["disponibile"]:
+                    giorni_fatti_tot = res["giorni_fatti"]
+                    giorni_da_fare_tot = res["giorni_da_fare"]
+                    almeno_un_foglio_valido = True
+                    fogli_usati.add(foglio_scelto)
+
+        if almeno_un_foglio_valido:
+            out.at[idx, "Fatto"] = giorni_fatti_tot
+            out.at[idx, "Da fare"] = giorni_da_fare_tot
+        else:
+            out.at[idx, "Fatto"] = float("nan")
+            out.at[idx, "Da fare"] = float("nan")
 
     return out
 
@@ -1626,13 +1668,16 @@ def tabella_portafoglio(df):
 
     tabella = df[colonne].copy()
 
+    tabella["Fatto"] = tabella["Fatto"].apply(formatta_numero)
+    tabella["Da fare"] = tabella["Da fare"].apply(formatta_numero)
+
     configurazione = {
         "SAL": st.column_config.ProgressColumn(
             "SAL", min_value=0, max_value=100, format="%.1f%%"
         ),
         "Stato sorgente": st.column_config.TextColumn("Stato GANTT"),
-        "Fatto": st.column_config.NumberColumn("Giorni fatti", format="%.1f"),
-        "Da fare": st.column_config.NumberColumn("Giorni da fare", format="%.1f"),
+        "Fatto": st.column_config.TextColumn("Giorni fatti"),
+        "Da fare": st.column_config.TextColumn("Giorni da fare"),
     }
 
     if "SAL atteso" in tabella.columns:
@@ -1908,13 +1953,18 @@ if vista == "Executive":
         st.markdown("---")
         st.subheader("Priorità operative")
 
+        priorita_tabella = priorita[["Progetto", "Team", "SAL", "Stato", "Fatto", "Da fare"]].copy()
+        priorita_tabella["Fatto"] = priorita_tabella["Fatto"].apply(formatta_numero)
+        priorita_tabella["Da fare"] = priorita_tabella["Da fare"].apply(formatta_numero)
+
         st.dataframe(
-            priorita[["Progetto", "Team", "SAL", "Stato", "Da fare"]],
+            priorita_tabella,
             use_container_width=True,
             hide_index=True,
             column_config={
                 "SAL": st.column_config.ProgressColumn("SAL", min_value=0, max_value=100, format="%.1f%%"),
-                "Da fare": st.column_config.NumberColumn("Giorni da fare", format="%.1f"),
+                "Fatto": st.column_config.TextColumn("Giorni fatti"),
+                "Da fare": st.column_config.TextColumn("Giorni da fare"),
             },
         )
 
