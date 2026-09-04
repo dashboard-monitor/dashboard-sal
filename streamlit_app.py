@@ -40,16 +40,22 @@ TEMPLATE_SAL = {
 
 CACHE_TTL_SECONDS = 300
 
-SOGLIA_ROSSO = 33.33
-SOGLIA_GIALLO = 66.67
+SOGLIA_INIZIALE = 33.33
+SOGLIA_INTERMEDIO = 66.67
 
-# Tolleranza ammessa tra SAL GANTT e SAL calcolato sui giorni.
 TOLLERANZA_COHERENZA_SAL = 1.0
 
+ORDINE_STATI = [
+    "In stato iniziale",
+    "In stato intermedio",
+    "In stato avanzato",
+    "Completato",
+]
+
 COLORI_STATO = {
-    "Critico": "#D62728",
-    "In avanzamento": "#F2C94C",
-    "Avanzato": "#2CA02C",
+    "In stato iniziale": "#D62728",
+    "In stato intermedio": "#F2C94C",
+    "In stato avanzato": "#2CA02C",
     "Completato": "#167D3E",
     "N/D": "#A0A0A0",
 }
@@ -155,8 +161,6 @@ def chiave_progetto(value):
 
     text = normalizza_testo(value)
 
-    # Elimina anche simboli come ✅ presenti nei nomi
-    # dei progetti completati.
     text = re.sub(
         r"[^a-z0-9]+",
         " ",
@@ -207,8 +211,8 @@ def pulisci_dataframe(df):
         for c in df.columns
     ]
 
-    # Non vengono eliminate le colonne Unnamed.
-    # Sono utili per preservare le posizioni A-I
+    # Non vengono eliminate le colonne vuote / Unnamed.
+    # È necessario preservare la posizione fisica A-I
     # dei fogli SAL individuali.
 
     df = df.dropna(
@@ -245,7 +249,6 @@ def serie_numerica(serie):
         if not text:
             return float("nan")
 
-        # Gestione formato italiano 1.234,56
         if "," in text and "." in text:
 
             if text.rfind(",") > text.rfind("."):
@@ -296,18 +299,16 @@ def serie_numerica(serie):
 
 def percentuale_da_excel(serie):
     """
-    Converte correttamente:
+    Esempi:
 
-    0.5993  -> 59.93
-    0.8055  -> 80.55
-    0.9850  -> 98.50
-    1.0000  -> 100.00
-    1.1332  -> 113.32
+    0.5993 -> 59.93
+    0.8055 -> 80.55
+    0.9850 -> 98.50
+    1.0000 -> 100.00
+    1.1332 -> 113.32
 
-    ma lascia invariati valori già nella scala 0-100:
-
-    59.93   -> 59.93
-    "59,93%" -> 59.93
+    I valori già espressi in scala 0-100
+    vengono lasciati invariati.
     """
 
     valori = []
@@ -388,9 +389,6 @@ def percentuale_da_excel(serie):
             .median()
         )
 
-        # Se la maggioranza della colonna presenta
-        # il classico formato Excel 0-1,
-        # la colonna viene convertita in 0-100.
         if (
             quota_frazioni >= 0.60
             or mediana <= 1.5
@@ -437,14 +435,70 @@ def formatta_numero(
 
 
 # ============================================================
+# ORDINAMENTO PORTAFOGLIO
+# ============================================================
+
+def ordina_portafoglio(
+    df,
+    ordinamento
+):
+
+    out = df.copy()
+
+    if ordinamento == "SAL crescente":
+
+        return (
+            out
+            .sort_values(
+                ["SAL", "Progetto"],
+                ascending=[
+                    True,
+                    True,
+                ],
+                na_position="last",
+            )
+        )
+
+    if ordinamento == "SAL decrescente":
+
+        return (
+            out
+            .sort_values(
+                ["SAL", "Progetto"],
+                ascending=[
+                    False,
+                    True,
+                ],
+                na_position="last",
+            )
+        )
+
+    if ordinamento == "Nome progetto":
+
+        return (
+            out
+            .sort_values(
+                "Progetto",
+                ascending=True,
+                key=lambda serie:
+                    serie
+                    .astype(str)
+                    .str.lower(),
+                na_position="last",
+            )
+        )
+
+    return out
+
+
+# ============================================================
 # CLASSIFICAZIONE SAL
 # ============================================================
 
 def stato_da_sal(value):
     """
-    Classificazione semaforica utilizzata
-    soltanto quando il progetto NON risulta
-    esplicitamente COMPLETO nel GANTT.
+    Classifica il progetto in base al SAL quando
+    il GANTT non indica esplicitamente COMPLETO.
     """
 
     if pd.isna(value):
@@ -461,13 +515,13 @@ def stato_da_sal(value):
     if valore >= 100:
         return "Completato"
 
-    if valore <= SOGLIA_ROSSO:
-        return "Critico"
+    if valore <= SOGLIA_INIZIALE:
+        return "In stato iniziale"
 
-    if valore <= SOGLIA_GIALLO:
-        return "In avanzamento"
+    if valore <= SOGLIA_INTERMEDIO:
+        return "In stato intermedio"
 
-    return "Avanzato"
+    return "In stato avanzato"
 
 
 # ============================================================
@@ -492,7 +546,6 @@ def trova_colonna(
         for col in df.columns
     }
 
-    # Match esatto
     for candidato in exact:
 
         candidato_norm = normalizza_testo(
@@ -504,7 +557,6 @@ def trova_colonna(
             if nome == candidato_norm:
                 return col
 
-    # Contiene tutti i termini
     if contains_all:
 
         for col, nome in nomi.items():
@@ -521,7 +573,6 @@ def trova_colonna(
             ):
                 return col
 
-    # Contiene almeno un termine
     if contains_any:
 
         for col, nome in nomi.items():
@@ -565,8 +616,6 @@ def trova_colonna_progetto(df):
     if col is not None:
         return col
 
-    # Fallback:
-    # prima colonna prevalentemente testuale.
     for col in df.columns:
 
         serie = df[col].dropna()
@@ -673,10 +722,6 @@ def trova_colonna_sal(df):
 
 
 def trova_colonna_stato(df):
-    """
-    Individua la colonna STATO ufficiale
-    presente nei GANTT EPAL / MGIO / combinato.
-    """
 
     return trova_colonna(
         df,
@@ -778,7 +823,7 @@ def trova_colonna_team(df):
 
 
 # ============================================================
-# STATO UFFICIALE DEL PROGETTO
+# STATO UFFICIALE PROGETTO
 # ============================================================
 
 def normalizza_stato_progetto(
@@ -786,17 +831,11 @@ def normalizza_stato_progetto(
     sal
 ):
     """
-    REGOLA CENTRALE:
+    Lo stato COMPLETO presente nel GANTT
+    ha priorità sulla percentuale SAL.
 
-    1. Se il GANTT indica esplicitamente che
-       il progetto è COMPLETO, lo stato è
-       "Completato" indipendentemente dal SAL.
-
-       Esempio:
-       SAL 94% + STATO COMPLETO -> Completato
-
-    2. Se STATO è vuoto, la classificazione
-       viene ricavata dal SAL.
+    Esempio:
+    SAL 94% + STATO COMPLETO -> Completato
     """
 
     if stato_sorgente is not None:
@@ -854,19 +893,13 @@ def tipo_sal_da_nome(nome):
 
 
 # ============================================================
-# COLONNE GIORNI DEI SAL
+# COLONNE GIORNI SAL
 # ============================================================
 
 def trova_colonne_giorni_sal(
     df,
     nome_foglio
 ):
-    """
-    Cerca prima le intestazioni.
-
-    Nei SAL individuali EPAL/MGIO,
-    se necessario, usa H:I come fallback.
-    """
 
     col_fatto = trova_colonna_fatto(
         df
@@ -891,9 +924,6 @@ def trova_colonne_giorni_sal(
         nome_foglio
     )
 
-    # SAL individuale:
-    # H = colonna 8 = indice 7
-    # I = colonna 9 = indice 8
     if (
         tipo in {
             "EPAL",
@@ -941,7 +971,7 @@ def trova_colonne_giorni_sal(
 
 
 # ============================================================
-# RIGHE VALIDE ATTIVITÀ
+# RIGHE ATTIVITÀ VALIDE
 # ============================================================
 
 def testo_non_nan(serie):
@@ -989,7 +1019,7 @@ def mask_righe_attivita_valide(
 
 
 # ============================================================
-# CALCOLO GIORNI DEL PROGETTO DAL SAL
+# CALCOLO GIORNI DAL SAL
 # ============================================================
 
 def calcola_giorni_progetto(
@@ -1022,7 +1052,6 @@ def calcola_giorni_progetto(
         col_fatto is None
         or col_da_fare is None
     ):
-
         return risultato_vuoto
 
     fatto = (
@@ -1066,7 +1095,6 @@ def calcola_giorni_progetto(
         fatto.empty
         and da_fare.empty
     ):
-
         return risultato_vuoto
 
     tot_fatto = (
@@ -1304,13 +1332,6 @@ def costruisci_portafoglio(
     team,
     source_sheet
 ):
-    """
-    Costruisce il dataset gestionale.
-
-    IMPORTANTE:
-    la colonna STATO del GANTT ha priorità
-    nel determinare se il progetto è completato.
-    """
 
     if (
         df is None
@@ -1463,8 +1484,8 @@ def costruisci_portafoglio(
             * 100
         )
 
-    # SAL usato per grafici e KPI:
-    # sempre compreso tra 0 e 100.
+    # Valore utilizzato nei grafici:
+    # sempre limitato all'intervallo 0-100.
     out["SAL"] = (
         out["SAL sorgente"]
         .clip(
@@ -1516,17 +1537,6 @@ def costruisci_portafoglio(
 
     # --------------------------------------------------------
     # STATO GESTIONALE
-    # --------------------------------------------------------
-    #
-    # Questa è la correzione fondamentale.
-    #
-    # Se STATO = COMPLETO:
-    #     -> Completato
-    #
-    # anche se il SAL è 93%, 97%, 99%, ecc.
-    #
-    # Solo se STATO non indica completamento,
-    # viene applicato il semaforo percentuale.
     # --------------------------------------------------------
 
     out["Stato"] = [
@@ -1613,7 +1623,7 @@ def normalizza_team(value):
 
 
 # ============================================================
-# PORTAFOGLIO DAL GANTT COMBINATO
+# PORTAFOGLIO COMBINATO
 # ============================================================
 
 def costruisci_portafoglio_combinato(
@@ -1677,17 +1687,15 @@ def costruisci_portafoglio_combinato(
             if not key:
                 continue
 
-            team_norm = (
-                normalizza_team(
-                    team
-                )
+            team_norm = normalizza_team(
+                team
             )
 
             if team_norm != "N/D":
 
-                team_map[key] = (
-                    team_norm
-                )
+                team_map[
+                    key
+                ] = team_norm
 
     def assegna_team(progetto):
 
@@ -1728,10 +1736,19 @@ def costruisci_portafoglio_combinato(
 
 
 # ============================================================
-# SAL COMPLESSIVO PORTAFOGLIO
+# SAL COMPLESSIVO
 # ============================================================
 
 def portfolio_sal(df):
+    """
+    Calcola il SAL del DataFrame ricevuto.
+
+    Se sono disponibili giorni fatti / da fare:
+    utilizza una media ponderata sui giorni.
+
+    In caso contrario:
+    utilizza la media dei SAL disponibili.
+    """
 
     if df.empty:
 
@@ -1746,8 +1763,6 @@ def portfolio_sal(df):
         df["Da fare"].notna()
     )
 
-    # Prima scelta:
-    # SAL ponderato sui giorni.
     if validi_giorni.any():
 
         fatto = (
@@ -1780,8 +1795,6 @@ def portfolio_sal(df):
                 "ponderato sui giorni"
             )
 
-    # Fallback:
-    # media dei SAL disponibili.
     if df["SAL"].notna().any():
 
         return (
@@ -1796,7 +1809,7 @@ def portfolio_sal(df):
 
 
 # ============================================================
-# FLAG PROGETTI PRESENTI IN EPAL E MGIO
+# FLAG PROGETTI PRESENTI IN ENTRAMBI
 # ============================================================
 
 def aggiungi_flag_condiviso(
@@ -2224,19 +2237,23 @@ def costruisci_attivita(
 
 def grafico_ranking(
     df,
-    titolo
+    titolo,
+    ordinamento="SAL decrescente"
 ):
 
     plot_df = (
         df
         .dropna(
-            subset=["SAL"]
-        )
-        .sort_values(
-            "SAL",
-            ascending=True
+            subset=[
+                "SAL"
+            ]
         )
         .copy()
+    )
+
+    plot_df = ordina_portafoglio(
+        plot_df,
+        ordinamento
     )
 
     if plot_df.empty:
@@ -2271,6 +2288,13 @@ def grafico_ranking(
         )
     )
 
+    ordine_progetti = (
+        plot_df[
+            "Progetto"
+        ]
+        .tolist()
+    )
+
     fig = px.bar(
         plot_df,
         x="SAL",
@@ -2278,6 +2302,10 @@ def grafico_ranking(
         orientation="h",
         color="Stato",
         color_discrete_map=COLORI_STATO,
+        category_orders={
+            "Stato": ORDINE_STATI,
+            "Progetto": ordine_progetti,
+        },
         text="Etichetta SAL",
         custom_data=[
             "Team",
@@ -2295,7 +2323,10 @@ def grafico_ranking(
     )
 
     fig.update_xaxes(
-        range=[0, 100],
+        range=[
+            0,
+            100
+        ],
         tickmode="array",
         tickvals=list(
             range(
@@ -2318,6 +2349,9 @@ def grafico_ranking(
     fig.update_yaxes(
         title=None,
         automargin=True,
+        autorange="reversed",
+        categoryorder="array",
+        categoryarray=ordine_progetti,
     )
 
     fig.update_layout(
@@ -2371,18 +2405,11 @@ def grafico_distribuzione_stati(
     df
 ):
 
-    ordine = [
-        "Critico",
-        "In avanzamento",
-        "Avanzato",
-        "Completato",
-    ]
-
     conteggi = (
         df["Stato"]
         .value_counts()
         .reindex(
-            ordine,
+            ORDINE_STATI,
             fill_value=0
         )
         .rename_axis(
@@ -2400,6 +2427,10 @@ def grafico_distribuzione_stati(
         hole=0.58,
         color="Stato",
         color_discrete_map=COLORI_STATO,
+        category_orders={
+            "Stato":
+                ORDINE_STATI
+        },
         title=(
             "Distribuzione dello stato "
             "dei progetti"
@@ -2446,6 +2477,10 @@ def grafico_distribuzione_stati(
 # ============================================================
 
 def grafico_confronto_team(df):
+    """
+    Il confronto considera soltanto
+    i progetti ancora in corso.
+    """
 
     ordine_team = [
         "EPAL",
@@ -2458,8 +2493,15 @@ def grafico_confronto_team(df):
     for team in ordine_team:
 
         team_df = df[
-            df["Team"] == team
-        ]
+            (
+                df["Team"] == team
+            )
+            &
+            (
+                df["Stato"]
+                != "Completato"
+            )
+        ].copy()
 
         if team_df.empty:
             continue
@@ -2473,9 +2515,8 @@ def grafico_confronto_team(df):
                 "Team": team,
                 "SAL": sal,
                 "Metodo": metodo,
-                "Progetti": len(
-                    team_df
-                ),
+                "Progetti in corso":
+                    len(team_df),
             }
         )
 
@@ -2486,7 +2527,8 @@ def grafico_confronto_team(df):
     if confronto.empty:
 
         st.info(
-            "Confronto team non disponibile."
+            "Confronto dei progetti in corso "
+            "non disponibile."
         )
 
         return
@@ -2508,20 +2550,24 @@ def grafico_confronto_team(df):
         text="Etichetta",
         custom_data=[
             "Metodo",
-            "Progetti",
+            "Progetti in corso",
         ],
         title=(
-            "Confronto avanzamento "
+            "Confronto SAL progetti in corso "
             "per portafoglio"
         ),
         labels={
-            "SAL": "SAL portafoglio",
+            "SAL":
+                "SAL progetti in corso",
             "Team": "",
         },
     )
 
     fig.update_xaxes(
-        range=[0, 100],
+        range=[
+            0,
+            100
+        ],
         tickvals=[
             0,
             20,
@@ -2556,8 +2602,8 @@ def grafico_confronto_team(df):
         cliponaxis=False,
         hovertemplate=(
             "<b>%{y}</b><br>"
-            "SAL: %{x:.1f}%<br>"
-            "Progetti: %{customdata[1]}<br>"
+            "SAL progetti in corso: %{x:.1f}%<br>"
+            "Progetti in corso: %{customdata[1]}<br>"
             "Calcolo: %{customdata[0]}"
             "<extra></extra>"
         ),
@@ -2622,7 +2668,10 @@ def grafico_reale_atteso(df):
     )
 
     fig.update_xaxes(
-        range=[0, 100],
+        range=[
+            0,
+            100
+        ],
         tickvals=list(
             range(
                 0,
@@ -2703,6 +2752,10 @@ def grafico_attivita(
         orientation="h",
         color="Stato",
         color_discrete_map=COLORI_STATO,
+        category_orders={
+            "Stato":
+                ORDINE_STATI
+        },
         text="Etichetta",
         title=(
             f"Avanzamento attività — "
@@ -2716,7 +2769,10 @@ def grafico_attivita(
     )
 
     fig.update_xaxes(
-        range=[0, 100],
+        range=[
+            0,
+            100
+        ],
         tickvals=list(
             range(
                 0,
@@ -2840,7 +2896,10 @@ def grafico_ripartizione_lavoro(
     )
 
     fig.update_xaxes(
-        range=[0, 100],
+        range=[
+            0,
+            100
+        ],
         tickmode="array",
         tickvals=[
             0,
@@ -3020,7 +3079,10 @@ if not check_password():
 
 header_left, header_right = (
     st.columns(
-        [6, 1]
+        [
+            6,
+            1
+        ]
     )
 )
 
@@ -3134,7 +3196,7 @@ vista = st.sidebar.radio(
 
 
 # ============================================================
-# COSTRUZIONE PORTAFOGLIO EPAL
+# PORTAFOGLIO EPAL
 # ============================================================
 
 if GANTT_EPAL in fogli:
@@ -3157,7 +3219,7 @@ else:
 
 
 # ============================================================
-# COSTRUZIONE PORTAFOGLIO MGIO
+# PORTAFOGLIO MGIO
 # ============================================================
 
 if GANTT_MGIO in fogli:
@@ -3216,8 +3278,6 @@ else:
     )
 
 
-# Se il GANTT combinato è disponibile e contiene
-# dati validi, viene utilizzato come fonte primaria.
 if (
     not portfolio_da_gantt_combinato.empty
     and
@@ -3342,17 +3402,14 @@ if (
     )
 
 
-    # Chiave specifica per portafoglio:
-    # passando da EPAL a MGIO il filtro ritorna
-    # correttamente su Tutti.
     filtro_stato = (
         st.sidebar.selectbox(
             "Stato",
             [
                 "Tutti",
-                "Critico",
-                "In avanzamento",
-                "Avanzato",
+                "In stato iniziale",
+                "In stato intermedio",
+                "In stato avanzato",
                 "Completato",
             ],
             key=f"stato_{scope}",
@@ -3365,7 +3422,10 @@ if (
             "Intervallo SAL",
             min_value=0,
             max_value=100,
-            value=(0, 100),
+            value=(
+                0,
+                100
+            ),
             step=1,
             key=f"range_sal_{scope}",
         )
@@ -3431,13 +3491,37 @@ if vista == "Executive":
         st.stop()
 
 
-    (
-        sal_portafoglio,
-        metodo_sal
-    ) = portfolio_sal(
-        portfolio_filtrato
+    # ========================================================
+    # PROGETTI IN CORSO
+    # ========================================================
+    #
+    # Il SAL sintetico della vista Executive viene calcolato
+    # ESCLUSIVAMENTE sui progetti non classificati
+    # come Completato.
+    # ========================================================
+
+    portfolio_in_corso = (
+        portfolio_filtrato[
+            portfolio_filtrato[
+                "Stato"
+            ]
+            != "Completato"
+        ]
+        .copy()
     )
 
+
+    (
+        sal_progetti_in_corso,
+        metodo_sal
+    ) = portfolio_sal(
+        portfolio_in_corso
+    )
+
+
+    # ========================================================
+    # KPI
+    # ========================================================
 
     totale_progetti = len(
         portfolio_filtrato
@@ -3455,18 +3539,34 @@ if vista == "Executive":
     )
 
 
-    in_corso = (
-        totale_progetti
-        - completati
-    )
-
-
-    critici = int(
+    stato_iniziale = int(
         (
             portfolio_filtrato[
                 "Stato"
             ]
-            == "Critico"
+            == "In stato iniziale"
+        )
+        .sum()
+    )
+
+
+    stato_intermedio = int(
+        (
+            portfolio_filtrato[
+                "Stato"
+            ]
+            == "In stato intermedio"
+        )
+        .sum()
+    )
+
+
+    stato_avanzato = int(
+        (
+            portfolio_filtrato[
+                "Stato"
+            ]
+            == "In stato avanzato"
         )
         .sum()
     )
@@ -3485,8 +3585,8 @@ if vista == "Executive":
     )
 
 
-    k1, k2, k3, k4, k5 = (
-        st.columns(5)
+    k1, k2, k3, k4, k5, k6 = (
+        st.columns(6)
     )
 
 
@@ -3497,9 +3597,9 @@ if vista == "Executive":
 
 
     k2.metric(
-        "SAL portafoglio",
+        "SAL progetti in corso",
         formatta_percentuale(
-            sal_portafoglio
+            sal_progetti_in_corso
         ),
     )
 
@@ -3511,25 +3611,31 @@ if vista == "Executive":
 
 
     k4.metric(
-        "In corso",
-        in_corso
+        "In stato iniziale",
+        stato_iniziale
     )
 
 
     k5.metric(
-        "Critici",
-        critici
+        "In stato intermedio",
+        stato_intermedio
+    )
+
+
+    k6.metric(
+        "In stato avanzato",
+        stato_avanzato
     )
 
 
     st.caption(
-        "Metodo SAL portafoglio: "
+        "Metodo SAL progetti in corso: "
         f"{metodo_sal}."
     )
 
 
     # ========================================================
-    # ANOMALIE
+    # ANOMALIE SAL
     # ========================================================
 
     if anomalie > 0:
@@ -3602,12 +3708,38 @@ if vista == "Executive":
 
 
     # ========================================================
+    # ORDINAMENTO EXECUTIVE
+    # ========================================================
+
+    ordinamento_executive = st.radio(
+        "Ordinamento",
+        [
+            "SAL crescente",
+            "SAL decrescente",
+            "Nome progetto",
+        ],
+        index=1,
+        horizontal=True,
+        key=f"ordinamento_executive_{scope}",
+    )
+
+
+    portfolio_executive_ordinato = (
+        ordina_portafoglio(
+            portfolio_filtrato,
+            ordinamento_executive
+        )
+    )
+
+
+    # ========================================================
     # RANKING
     # ========================================================
 
     grafico_ranking(
         portfolio_filtrato,
-        "Avanzamento dei progetti"
+        "Avanzamento dei progetti",
+        ordinamento=ordinamento_executive,
     )
 
 
@@ -3638,7 +3770,7 @@ if vista == "Executive":
         else:
 
             fatto = (
-                portfolio_filtrato[
+                portfolio_in_corso[
                     "Fatto"
                 ]
                 .dropna()
@@ -3646,7 +3778,7 @@ if vista == "Executive":
             )
 
             residuo = (
-                portfolio_filtrato[
+                portfolio_in_corso[
                     "Da fare"
                 ]
                 .dropna()
@@ -3679,7 +3811,8 @@ if vista == "Executive":
                     y="Voce",
                     orientation="h",
                     title=(
-                        "Carico di lavoro registrato"
+                        "Carico di lavoro "
+                        "dei progetti in corso"
                     ),
                     text="Giorni",
                 )
@@ -3720,7 +3853,7 @@ if vista == "Executive":
 
 
     # ========================================================
-    # PRIORITÀ
+    # PRIORITÀ OPERATIVE
     # ========================================================
 
     priorita = (
@@ -3730,8 +3863,8 @@ if vista == "Executive":
             ]
             .isin(
                 [
-                    "Critico",
-                    "In avanzamento",
+                    "In stato iniziale",
+                    "In stato intermedio",
                 ]
             )
         ]
@@ -3804,7 +3937,7 @@ if vista == "Executive":
         )
 
         grafico_reale_atteso(
-            portfolio_filtrato
+            portfolio_executive_ordinato
         )
 
 
@@ -3822,14 +3955,14 @@ if vista == "Executive":
 
 
     tabella_portafoglio(
-        portfolio_filtrato
+        portfolio_executive_ordinato
     )
 
 
     st.download_button(
         "⬇️ Scarica portafoglio filtrato in CSV",
         data=csv_bytes(
-            portfolio_filtrato
+            portfolio_executive_ordinato
         ),
         file_name=(
             "portfolio_sal_"
@@ -3877,7 +4010,9 @@ elif vista == "Avanzamento":
             "SAL decrescente",
             "Nome progetto",
         ],
+        index=1,
         horizontal=True,
+        key=f"ordinamento_avanzamento_{scope}",
     )
 
 
@@ -3886,40 +4021,22 @@ elif vista == "Avanzamento":
     )
 
 
-    if ordinamento == "SAL crescente":
-
-        avanzamento = (
-            avanzamento
-            .sort_values(
-                "SAL",
-                ascending=True
-            )
+    avanzamento_ordinato = (
+        ordina_portafoglio(
+            avanzamento,
+            ordinamento
         )
+    )
 
-    elif ordinamento == "SAL decrescente":
 
-        avanzamento = (
-            avanzamento
-            .sort_values(
-                "SAL",
-                ascending=False
-            )
-        )
-
-    else:
-
-        avanzamento = (
-            avanzamento
-            .sort_values(
-                "Progetto",
-                ascending=True
-            )
-        )
-
+    # ========================================================
+    # RANKING
+    # ========================================================
 
     grafico_ranking(
         avanzamento,
-        "Ranking SAL"
+        "Ranking SAL",
+        ordinamento=ordinamento,
     )
 
 
@@ -3928,10 +4045,18 @@ elif vista == "Avanzamento":
     )
 
 
+    # ========================================================
+    # TABELLA
+    # ========================================================
+
     tabella_portafoglio(
-        avanzamento
+        avanzamento_ordinato
     )
 
+
+    # ========================================================
+    # SAL REALE VS ATTESO
+    # ========================================================
 
     if (
         avanzamento[
@@ -3946,7 +4071,7 @@ elif vista == "Avanzamento":
         )
 
         grafico_reale_atteso(
-            avanzamento
+            avanzamento_ordinato
         )
 
 
@@ -4232,9 +4357,6 @@ elif vista == "Dettaglio progetto":
         )
 
 
-    # IMPORTANTE:
-    # nel dettaglio non ricalcoliamo lo stato dal SAL.
-    # Manteniamo lo stato ufficiale determinato dal GANTT.
     stato_visualizzato = (
         riepilogo["Stato"]
     )
@@ -4311,10 +4433,6 @@ elif vista == "Dettaglio progetto":
         ),
     )
 
-
-    # ========================================================
-    # INFORMAZIONE CALCOLO GIORNI
-    # ========================================================
 
     if riepilogo_giorni[
         "disponibile"
@@ -4574,7 +4692,7 @@ elif vista == "Dettaglio progetto":
 
 
     # ========================================================
-    # DATI SORGENTE PROGETTO
+    # DATI SORGENTE SAL
     # ========================================================
 
     with st.expander(
