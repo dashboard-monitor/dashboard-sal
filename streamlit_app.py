@@ -1430,7 +1430,7 @@ def costruisci_attivita(df, nome_foglio):
     out["SAL"] = out["SAL sorgente"].clip(lower=0, upper=100)
 
     out_consolidato = (
-        out.groupby("Attività", as_index=False, sort=False)
+        out.groupby("Attività", as_index=False)
         .agg({
             "SAL": "mean",
             "SAL sorgente": "mean",
