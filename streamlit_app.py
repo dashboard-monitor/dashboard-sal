@@ -135,19 +135,6 @@ def pulisci_testo_emoji(text):
     return text
 
 
-def pulisci_nome_progetto(text):
-    if not text or pd.isna(text):
-        return ""
-    text_str = str(text)
-    def filtri_parentesi(match):
-        val = match.group(1).strip().upper().replace(" ", "")
-        if val in ["EPAL", "MGIO", "EPAL+MGIO", "MGIO+EPAL"]:
-            return f"({val})"
-        return " "
-    cleaned = re.sub(r"\(([^)]*)\)", filtri_parentesi, text_str)
-    return cleaned.strip()
-
-
 def normalizza_testo(value):
     if value is None or pd.isna(value):
         return ""
@@ -170,7 +157,7 @@ def tokenizza(value):
         "sal", "epal", "mgio", "progetto", "progetti", "gantt",
         "anal", "pred", "minipia", "srl", "spa", "soc", "coop", "cooperativa",
         "benefit", "e", "dei", "del", "della", "dello", "degli", "di", "da",
-        "le", "la", "il", "l",
+        "le", "la", "il", "l", "un", "una", "uno",
     }
     return {
         token
@@ -337,7 +324,7 @@ def stato_da_sal(value):
 
 
 # ============================================================
-# RICONOSCIMENTO COLONNE
+# RICONOSCIMENTO COLONNE SORGENTE
 # ============================================================
 
 def trova_colonna(
@@ -347,7 +334,6 @@ def trova_colonna(
     contains_any=None,
     exclude=None,
 ):
-
     exact = exact or []
     contains_all = contains_all or []
     contains_any = contains_any or []
@@ -1293,7 +1279,7 @@ def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names, sal_gant
             return False
         if pd.notna(sal_gantt) and pd.notna(res["pct_fatti"]):
             diff = abs(float(sal_gantt) - float(res["pct_fatti"]))
-            if diff > 30.0: # Guardrail anti falsi positivi
+            if diff > 30.0:  # Guardrail anti falsi positivi
                 return False
         return True
 
