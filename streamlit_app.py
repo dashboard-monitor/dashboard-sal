@@ -337,7 +337,7 @@ def team_da_insieme(teams):
     teams = {team for team in teams if team and team != "N/D"}
     if "EPAL+MGIO" in teams or ("EPAL" in teams and "MGIO" in teams):
         return "EPAL+MGIO"
-    if "EPAL":
+    if "EPAL" in teams:
         return "EPAL"
     if "MGIO" in teams:
         return "MGIO"
@@ -758,7 +758,7 @@ def calcola_giorni_progetto(df_sal, nome_foglio):
         sal_serie = pd.Series(float("nan"), index=df_valido.index)
 
     if col_fatto:
-        fatto = serie_numerica(df_valido[col_fatto]).clip(lower=0)
+        fatto = serie_numerica(df_valido[col_fatto])
     else:
         fatto = pd.Series(float("nan"), index=df_valido.index)
         
@@ -821,8 +821,8 @@ def calcola_giorni_progetto(df_sal, nome_foglio):
 def calcola_giorni_da_gantt(fatto, da_fare):
     if pd.isna(fatto) or pd.isna(da_fare):
         return None
-    fatto = max(float(fatto), 0)
-    da_fare = max(float(da_fare), 0)
+    fatto = float(fatto)
+    da_fare = float(da_fare)
     totale = fatto + da_fare
     
     if totale <= 0:
@@ -916,7 +916,7 @@ def costruisci_portafoglio(df, team, source_sheet):
     out["Team"] = team
 
     if col_fatto:
-        out["Fatto"] = serie_numerica(df.loc[indici, col_fatto]).clip(lower=0)
+        out["Fatto"] = serie_numerica(df.loc[indici, col_fatto])
     else:
         out["Fatto"] = float("nan")
         
@@ -1039,7 +1039,7 @@ def consolida_progetti_univoci(df):
         validi_gg = f_ser.notna() & d_ser.notna()
 
         if validi_gg.any():
-            fatto = f_ser.loc[validi_gg].clip(lower=0).sum()
+            fatto = f_ser.loc[validi_gg].sum()
             da_fare = d_ser.loc[validi_gg].sum()
             totale_gg = fatto + da_fare
         else:
@@ -1135,8 +1135,8 @@ def portfolio_sal(df):
         
     validi = df["Fatto"].notna() & df["Da fare"].notna()
     if len(df) > 0 and validi.all():
-        f = df["Fatto"].clip(lower=0).sum()
-        r = df["Da fare"].clip(lower=0).sum()
+        f = df["Fatto"].sum()
+        r = df["Da fare"].sum()
         if (f + r) > 0:
             return ((f / (f + r)) * 100, "ponderato sui giorni")
             
@@ -1172,7 +1172,6 @@ def arricchisci_portafoglio_con_giorni_sal_dettaglio(df, fogli, sheet_names):
         orig_f = out.at[idx, "Fatto"] if "Fatto" in out.columns else float("nan")
         orig_d = out.at[idx, "Da fare"] if "Da fare" in out.columns else float("nan")
 
-        # Se il dato e gia stato letto dal foglio MINDS_RIEPILOGO, lo protegge e non lo sovrascrive
         if pd.notna(orig_f) and pd.notna(orig_d):
             continue
 
@@ -1215,12 +1214,12 @@ def costruisci_attivita(df, nome_foglio):
         out["SAL sorgente"] = float("nan")
         
     if col_fatto:
-        fatto = serie_numerica(df.loc[indici, col_fatto]).clip(lower=0)
+        fatto = serie_numerica(df.loc[indici, col_fatto])
     else:
         fatto = pd.Series(float("nan"), index=indici)
         
     if col_da_fare:
-        da_fare = serie_numerica(df.loc[indici, col_da_fare]).clip(lower=0)
+        da_fare = serie_numerica(df.loc[indici, col_da_fare])
     else:
         da_fare = pd.Series(float("nan"), index=indici)
 
@@ -1338,23 +1337,24 @@ def grafico_distribuzione_stati(df):
 
 def grafico_confronto_team(df):
     righe = []
+    # Genera sempre le 3 categorie nell'ordine desiderato
     for team in ["EPAL", "MGIO", "EPAL+MGIO"]:
         team_df = df[(df["Team"] == team) & (df["Stato"] != "Completato")].copy()
-        if team_df.empty:
-            continue
-        sal, metodo = portfolio_sal(team_df)
+        if not team_df.empty:
+            sal, metodo = portfolio_sal(team_df)
+            num_prog = len(team_df)
+        else:
+            sal, metodo = 0.0, "Nessun progetto in corso"
+            num_prog = 0
+            
         righe.append({
             "Team": team, 
-            "SAL": sal, 
+            "SAL": sal if pd.notna(sal) else 0.0, 
             "Metodo": metodo, 
-            "Progetti in corso": len(team_df)
+            "Progetti in corso": num_prog
         })
         
     confronto = pd.DataFrame(righe)
-    if confronto.empty:
-        st.info("Confronto progetti in corso non disponibile.")
-        return
-        
     confronto["Etichetta"] = confronto["SAL"].apply(formatta_percentuale)
     
     fig = px.bar(
@@ -1366,6 +1366,7 @@ def grafico_confronto_team(df):
         custom_data=["Metodo", "Progetti in corso"],
         title="SAL progetti in corso per team", 
         labels={"SAL": "SAL", "Team": ""},
+        category_orders={"Team": ["EPAL", "MGIO", "EPAL+MGIO"]}
     )
     fig.update_xaxes(
         range=[0, 100], 
@@ -1714,9 +1715,10 @@ if vista == "Executive":
         if scope == "Tutti - EPAL+MGIO":
             grafico_confronto_team(portfolio_filtrato)
         else:
-            f = port_in_corso["Fatto"].dropna().sum()
-            r = port_in_corso["Da fare"].dropna().sum()
-            if f > 0 or r > 0:
+            # Calcolo algebrico sui dati filtrati per la barra Carico di Lavoro
+            f = portfolio_filtrato["Fatto"].dropna().sum()
+            r = portfolio_filtrato["Da fare"].dropna().sum()
+            if pd.notna(f) or pd.notna(r):
                 fig = px.bar(
                     pd.DataFrame({"Voce": ["Fatto", "Da fare"], "Giorni": [f, r]}), 
                     x="Giorni", y="Voce", orientation="h", title="Carico di lavoro", text="Giorni"
@@ -1790,7 +1792,7 @@ elif vista == "Dettaglio progetto":
     )
     df_sal = fogli[foglio_sal]
 
-    # Allinea esattamente i contatori alle metriche ufficiali del portafoglio se gia disponibili
+    # Prende direttamente i valori ufficiali consolidati da MINDS_RIEPILOGO
     if pd.notna(riepilogo.get("Fatto")) and pd.notna(riepilogo.get("Da fare")):
         f_minds = float(riepilogo["Fatto"])
         d_minds = float(riepilogo["Da fare"])
