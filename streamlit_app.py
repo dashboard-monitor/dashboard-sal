@@ -663,40 +663,50 @@ def calcola_metriche_minds(fogli):
     df_task = fogli["MINDS_task"]
 
     col_proj_sal = trova_colonna_progetto(df_sal)
-    col_res = trova_colonna_da_fare(df_sal)
-    col_proj_task = trova_colonna_progetto(df_task)
-    col_ore = trova_colonna_lavoro_totale_ore(df_task)
+    col_res_sal = trova_colonna_da_fare(df_sal)
+    col_team_sal = trova_colonna_team(df_sal)
 
-    if not col_proj_sal or not col_res or not col_proj_task or not col_ore:
+    col_proj_task = trova_colonna_progetto(df_task)
+    col_ore_task = trova_colonna_lavoro_totale_ore(df_task)
+    col_team_task = trova_colonna_team(df_task)
+
+    if not col_proj_sal or not col_res_sal or not col_proj_task or not col_ore_task:
         return {}
 
     ore_totali_mappa = {}
     for _, row in df_task.iterrows():
-        key = chiave_progetto(row[col_proj_task])
-        if key:
-            val_ore = serie_numerica(pd.Series([row[col_ore]])).iloc[0]
-            if pd.notna(val_ore):
-                ore_totali_mappa[key] = ore_totali_mappa.get(key, 0.0) + float(val_ore)
+        p_key = chiave_progetto(row[col_proj_task])
+        if not p_key:
+            continue
+        t_key = normalizza_team(row[col_team_task]) if col_team_task and pd.notna(row[col_team_task]) else "N/D"
+        val_ore = serie_numerica(pd.Series([row[col_ore_task]])).iloc[0]
+        if pd.notna(val_ore):
+            combo_key = (p_key, t_key)
+            ore_totali_mappa[combo_key] = ore_totali_mappa.get(combo_key, 0.0) + float(val_ore)
+            ore_totali_mappa[p_key] = ore_totali_mappa.get(p_key, 0.0) + float(val_ore)
 
     metriche_minds = {}
     for _, row in df_sal.iterrows():
-        key = chiave_progetto(row[col_proj_sal])
-        if not key:
+        p_key = chiave_progetto(row[col_proj_sal])
+        if not p_key:
             continue
+        t_key = normalizza_team(row[col_team_sal]) if col_team_sal and pd.notna(row[col_team_sal]) else "N/D"
 
-        residuo = serie_numerica(pd.Series([row[col_res]])).iloc[0]
-        ore_tot = ore_totali_mappa.get(key, float("nan"))
+        residuo = serie_numerica(pd.Series([row[col_res_sal]])).iloc[0]
+        ore_tot = ore_totali_mappa.get((p_key, t_key), ore_totali_mappa.get(p_key, float("nan")))
 
         if pd.notna(ore_tot):
             giorni_totali = ore_tot / 8.0
             giorni_da_fare = float(residuo) if pd.notna(residuo) else 0.0
             giorni_fatti = max(0.0, giorni_totali - giorni_da_fare)
 
-            metriche_minds[key] = {
+            item = {
                 "giorni_totali": giorni_totali,
                 "giorni_da_fare": giorni_da_fare,
                 "giorni_fatti": giorni_fatti,
             }
+            metriche_minds[(p_key, t_key)] = item
+            metriche_minds[p_key] = item
 
     return metriche_minds
 
@@ -707,9 +717,11 @@ def arricchisci_portafoglio_minds(df_portfolio, metriche_minds):
 
     out = df_portfolio.copy()
     for idx in out.index:
-        key = chiave_progetto(out.at[idx, "Progetto"])
-        if key in metriche_minds:
-            m = metriche_minds[key]
+        p_key = chiave_progetto(out.at[idx, "Progetto"])
+        t_key = normalizza_team(out.at[idx, "Team"]) if "Team" in out.columns else "N/D"
+        
+        m = metriche_minds.get((p_key, t_key), metriche_minds.get(p_key, None))
+        if m:
             out.at[idx, "Fatto"] = m["giorni_fatti"]
             out.at[idx, "Da fare"] = m["giorni_da_fare"]
 
@@ -1177,7 +1189,6 @@ def arricchisci_portafoglio_con_giorni_sal_dettaglio(df, fogli, sheet_names):
         
     out = df.copy()
     for idx in out.index:
-        # Protegge i dati gia calcolati ufficialmente da MINDS_SAL e MINDS_task
         orig_f = out.at[idx, "Fatto"] if "Fatto" in out.columns else float("nan")
         orig_d = out.at[idx, "Da fare"] if "Da fare" in out.columns else float("nan")
 
@@ -1809,7 +1820,7 @@ elif vista == "Dettaglio progetto":
     else:
         sal_vis = riepilogo["SAL"]
 
-    # RIGA 1: Metrike principali
+    # RIGA 1: Metriche principali
     p1, p2, p3, p4, p5 = st.columns(5)
     p1.metric("SAL", formatta_percentuale(sal_vis))
     p2.metric("Giorni Totali", formatta_numero(riep_gg["giorni_totali"]))
