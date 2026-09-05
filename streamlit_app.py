@@ -763,7 +763,7 @@ def calcola_giorni_progetto(df_sal, nome_foglio):
         fatto = pd.Series(float("nan"), index=df_valido.index)
         
     if col_da_fare:
-        da_fare = serie_numerica(df_valido[col_da_fare]).clip(lower=0)
+        da_fare = serie_numerica(df_valido[col_da_fare])
     else:
         da_fare = pd.Series(float("nan"), index=df_valido.index)
 
@@ -921,7 +921,7 @@ def costruisci_portafoglio(df, team, source_sheet):
         out["Fatto"] = float("nan")
         
     if col_da_fare:
-        out["Da fare"] = serie_numerica(df.loc[indici, col_da_fare]).clip(lower=0)
+        out["Da fare"] = serie_numerica(df.loc[indici, col_da_fare])
     else:
         out["Da fare"] = float("nan")
     
@@ -1040,7 +1040,7 @@ def consolida_progetti_univoci(df):
 
         if validi_gg.any():
             fatto = f_ser.loc[validi_gg].clip(lower=0).sum()
-            da_fare = d_ser.loc[validi_gg].clip(lower=0).sum()
+            da_fare = d_ser.loc[validi_gg].sum()
             totale_gg = fatto + da_fare
         else:
             fatto = da_fare = totale_gg = float("nan")
