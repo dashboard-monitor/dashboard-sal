@@ -309,9 +309,12 @@ def stato_da_sal(value):
 def stato_sorgente_e_completo(value):
     if value is None or pd.isna(value):
         return False
+    text_raw = str(value)
+    if "✅" in text_raw or "✔" in text_raw:
+        return True
     stato = normalizza_testo(value)
     stati_completati = {"completo", "completato", "completed", "chiuso", "concluso", "terminato", "finito"}
-    return stato in stati_completati or stato.startswith("complet")
+    return stato in stati_completati or stato.startswith("complet") or "completo" in stato or "completato" in stato
 
 
 def normalizza_stato_progetto(stato_sorgente, sal):
@@ -710,7 +713,8 @@ def arricchisci_portafoglio_minds(df_portfolio, metriche_minds):
                 sal_calc = (m["giorni_fatti"] / tot) * 100.0
                 out.at[idx, "SAL sorgente"] = sal_calc
                 out.at[idx, "SAL"] = min(max(sal_calc, 0.0), 100.0)
-                out.at[idx, "Stato"] = stato_da_sal(sal_calc)
+                ss = out.at[idx, "Stato sorgente"] if "Stato sorgente" in out.columns else ""
+                out.at[idx, "Stato"] = normalizza_stato_progetto(ss, sal_calc)
 
     return out
 
@@ -957,6 +961,13 @@ def costruisci_portafoglio(df, team, source_sheet):
         out["Stato sorgente"] = df.loc[indici, col_stato].where(df.loc[indici, col_stato].notna(), "").astype(str).str.strip()
     else:
         out["Stato sorgente"] = ""
+
+    # Rileva eventuale spunta verde o dicitura COMPLETO nel testo del nome progetto
+    for idx in indici:
+        nome_orig = str(df.loc[idx, col_progetto])
+        if "✅" in nome_orig or "✔" in nome_orig:
+            cur = out.at[idx, "Stato sorgente"]
+            out.at[idx, "Stato sorgente"] = (cur + " COMPLETO").strip()
 
     out["Stato"] = [normalizza_stato_progetto(ss, sal) for ss, sal in zip(out["Stato sorgente"], out["SAL"])]
 
@@ -1337,7 +1348,6 @@ def grafico_distribuzione_stati(df):
 
 def grafico_confronto_team(df):
     righe = []
-    # Genera sempre le 3 categorie nell'ordine desiderato
     for team in ["EPAL", "MGIO", "EPAL+MGIO"]:
         team_df = df[(df["Team"] == team) & (df["Stato"] != "Completato")].copy()
         if not team_df.empty:
@@ -1715,7 +1725,6 @@ if vista == "Executive":
         if scope == "Tutti - EPAL+MGIO":
             grafico_confronto_team(portfolio_filtrato)
         else:
-            # Calcolo algebrico sui dati filtrati per la barra Carico di Lavoro
             f = portfolio_filtrato["Fatto"].dropna().sum()
             r = portfolio_filtrato["Da fare"].dropna().sum()
             if pd.notna(f) or pd.notna(r):
@@ -1792,7 +1801,6 @@ elif vista == "Dettaglio progetto":
     )
     df_sal = fogli[foglio_sal]
 
-    # Prende direttamente i valori ufficiali consolidati da MINDS_RIEPILOGO
     if pd.notna(riepilogo.get("Fatto")) and pd.notna(riepilogo.get("Da fare")):
         f_minds = float(riepilogo["Fatto"])
         d_minds = float(riepilogo["Da fare"])
@@ -1819,7 +1827,6 @@ elif vista == "Dettaglio progetto":
     else:
         sal_vis = riepilogo["SAL"]
 
-    # RIGA 1: Metriche principali
     p1, p2, p3, p4, p5 = st.columns(5)
     p1.metric("SAL", formatta_percentuale(sal_vis))
     p2.metric("Giorni Totali", formatta_numero(riep_gg["giorni_totali"]))
@@ -1827,7 +1834,6 @@ elif vista == "Dettaglio progetto":
     p4.metric("Giorni da fare", formatta_numero(riep_gg["giorni_da_fare"]))
     p5.metric("Stato", riepilogo["Stato"])
 
-    # RIGA 2: Percentuali aggiuntive allineate sotto Giorni fatti e Giorni da fare
     if riep_gg["disponibile"]:
         _, _, p3_pct, p4_pct, _ = st.columns(5)
         p3_pct.metric("% Giorni fatti", formatta_percentuale(riep_gg["pct_fatti"]))
