@@ -22,10 +22,17 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-SHEET_ID = "12gik-EYKeVeJvOpohkPM-nUVJLbiDkKpI-XT9Mx2RAA"
+# RECUPERO SICURO DELL'ID DEL FILE DASHBOARD SORGENTE
+try:
+    SHEET_ID = st.secrets["SOURCE_FILE_ID"]
+except Exception:
+    st.error("Il secret SOURCE_FILE_ID non è configurato nelle impostazioni di Streamlit.")
+    st.stop()
+
 
 GANTT_EPAL = "GANTT_SAL_PROGETTI_EPAL"
 GANTT_MGIO = "GANTT_SAL_PROGETTI_MGIO"
+GANTT_MINDS = "MINDS_SAL"
 
 GANTT_COMBINATI_POSSIBILI = [
     "GANTT_SAL_PROGETTI_EPAL+MGIO",
@@ -83,7 +90,6 @@ PLOTLY_CONFIG = {
 st.markdown(
     """
     <style>
-
         .block-container {
             padding-top: 1.25rem;
             padding-bottom: 2.5rem;
@@ -109,7 +115,6 @@ st.markdown(
             margin-top: -.45rem;
             margin-bottom: .25rem;
         }
-
     </style>
     """,
     unsafe_allow_html=True,
@@ -117,7 +122,7 @@ st.markdown(
 
 
 # ============================================================
-# FUNZIONI GENERALI
+# FUNZIONI GENERALI E PULIZIA TESTO
 # ============================================================
 
 def ora_italiana():
@@ -139,11 +144,13 @@ def pulisci_nome_progetto(text):
     if not text or pd.isna(text):
         return ""
     text_str = str(text)
+    
     def filtri_parentesi(match):
         val = match.group(1).strip().upper().replace(" ", "")
         if val in ["EPAL", "MGIO", "EPAL+MGIO", "MGIO+EPAL"]:
             return f"({val})"
         return " "
+        
     cleaned = re.sub(r"\(([^)]*)\)", filtri_parentesi, text_str)
     return cleaned.strip()
 
@@ -188,7 +195,7 @@ def pulisci_dataframe(df):
 
 
 # ============================================================
-# CONVERSIONE NUMERICA
+# CONVERSIONE NUMERICA E PERCENTUALI
 # ============================================================
 
 def serie_numerica(serie):
@@ -198,13 +205,7 @@ def serie_numerica(serie):
         if isinstance(value, (int, float)):
             return float(value)
 
-        text = (
-            str(value)
-            .strip()
-            .replace("\u00A0", "")
-            .replace(" ", "")
-        )
-
+        text = str(value).strip().replace("\u00A0", "").replace(" ", "")
         if not text:
             return float("nan")
 
@@ -225,10 +226,6 @@ def serie_numerica(serie):
 
     return serie.apply(converti).astype("float64")
 
-
-# ============================================================
-# CONVERSIONE PERCENTUALI EXCEL
-# ============================================================
 
 def percentuale_da_excel(serie):
     valori = []
@@ -253,101 +250,100 @@ def percentuale_da_excel(serie):
     mask_percentuale = pd.Series(gia_percentuali, index=serie.index, dtype="bool")
 
     valori_inferenza = risultato[(~mask_percentuale) & risultato.notna()]
-
     if not valori_inferenza.empty:
         quota_frazioni = (valori_inferenza.abs() <= 1.5).mean()
         mediana = valori_inferenza.abs().median()
-
         if quota_frazioni >= 0.60 or mediana <= 1.5:
             risultato.loc[(~mask_percentuale) & risultato.notna()] *= 100
 
     return risultato
 
 
-# ============================================================
-# FORMATTAZIONE
-# ============================================================
-
 def formatta_percentuale(value, decimali=1):
     if pd.isna(value):
         return "N/D"
-
     return f"{float(value):.{decimali}f}%".replace(".", ",")
 
 
 def formatta_numero(value, decimali=1):
     if pd.isna(value):
         return "N/D"
-
     return f"{float(value):.{decimali}f}".replace(".", ",")
 
 
 # ============================================================
-# ORDINAMENTO PORTAFOGLIO
+# CLASSIFICAZIONE SAL E STATO
 # ============================================================
 
 def ordina_portafoglio(df, ordinamento):
     out = df.copy()
-
     if ordinamento == "SAL crescente":
-        return out.sort_values(
-            ["SAL", "Progetto"],
-            ascending=[True, True],
-            na_position="last",
-        )
-
+        return out.sort_values(["SAL", "Progetto"], ascending=[True, True], na_position="last")
     if ordinamento == "SAL decrescente":
-        return out.sort_values(
-            ["SAL", "Progetto"],
-            ascending=[False, True],
-            na_position="last",
-        )
-
+        return out.sort_values(["SAL", "Progetto"], ascending=[False, True], na_position="last")
     if ordinamento == "Nome progetto":
         return out.sort_values(
-            "Progetto",
-            ascending=True,
-            key=lambda serie: serie.astype(str).str.lower(),
-            na_position="last",
+            "Progetto", ascending=True, key=lambda serie: serie.astype(str).str.lower(), na_position="last"
         )
-
     return out
 
-
-# ============================================================
-# CLASSIFICAZIONE SAL
-# ============================================================
 
 def stato_da_sal(value):
     if pd.isna(value):
         return "N/D"
-
     valore = min(max(float(value), 0), 100)
-
     if valore >= 100:
         return "Completato"
-
     if valore <= SOGLIA_INIZIALE:
         return "In stato iniziale"
-
     if valore <= SOGLIA_INTERMEDIO:
         return "In stato intermedio"
-
     return "In stato avanzato"
+
+
+def stato_sorgente_e_completo(value):
+    if value is None or pd.isna(value):
+        return False
+    stato = normalizza_testo(value)
+    stati_completati = {"completo", "completato", "completed", "chiuso", "concluso", "terminato", "finito"}
+    return stato in stati_completati or stato.startswith("complet")
+
+
+def normalizza_stato_progetto(stato_sorgente, sal):
+    if stato_sorgente_e_completo(stato_sorgente):
+        return "Completato"
+    return stato_da_sal(sal)
+
+
+def normalizza_team(value):
+    text = normalizza_testo(value)
+    ha_epal = "epal" in text
+    ha_mgio = "mgio" in text
+    if ha_epal and ha_mgio:
+        return "EPAL+MGIO"
+    if ha_epal:
+        return "EPAL"
+    if ha_mgio:
+        return "MGIO"
+    return "N/D"
+
+
+def team_da_insieme(teams):
+    teams = {team for team in teams if team and team != "N/D"}
+    if "EPAL+MGIO" in teams or ("EPAL" in teams and "MGIO" in teams):
+        return "EPAL+MGIO"
+    if "EPAL" in teams:
+        return "EPAL"
+    if "MGIO" in teams:
+        return "MGIO"
+    return "N/D"
 
 
 # ============================================================
 # RICONOSCIMENTO COLONNE
 # ============================================================
 
-def trova_colonna(
-    df,
-    exact=None,
-    contains_all=None,
-    contains_any=None,
-    exclude=None,
-):
-
+def trova_colonna(df, exact=None, contains_all=None, contains_any=None, exclude=None):
     exact = exact or []
     contains_all = contains_all or []
     contains_any = contains_any or []
@@ -374,7 +370,6 @@ def trova_colonna(
                 continue
             if any(normalizza_testo(x) in nome for x in contains_any):
                 return col
-
     return None
 
 
@@ -383,12 +378,11 @@ def trova_colonna_progetto(df):
         df,
         exact=[
             "PROGETTO", "PROGETTO EPAL", "PROGETTO MGIO",
-            "NOME PROGETTO", "CLIENTE", "COMMESSA",
+            "NOME PROGETTO", "CLIENTE", "COMMESSA", "UTENTE",
             "ATTIVITÀ / PROGETTO", "ATTIVITA / PROGETTO",
         ],
-        contains_any=["progetto", "cliente", "commessa"],
+        contains_any=["progetto", "cliente", "commessa", "utente"],
     )
-
     if col is not None:
         return col
 
@@ -396,13 +390,11 @@ def trova_colonna_progetto(df):
         serie = df[col].dropna()
         if serie.empty:
             continue
-        quota_testo = serie.apply(lambda x: isinstance(x, str)).mean()
-        if quota_testo >= 0.50:
+        if serie.apply(lambda x: isinstance(x, str)).mean() >= 0.50:
             return col
 
-    if len(df.columns):
+    if len(df.columns) > 0:
         return df.columns[0]
-
     return None
 
 
@@ -413,66 +405,46 @@ def trova_colonna_attivita(df):
         contains_any=["attivita", "descrizione", "fase", "task"],
         exclude=["percentuale", "completamento"],
     )
-
     if col is not None:
         return col
-
     return trova_colonna_progetto(df)
 
 
 def trova_colonna_sal(df):
     col = trova_colonna(
         df,
-        exact=[
-            "% COMPLETAMENTO", "PERCENTUALE COMPLETAMENTO",
-            "COMPLETAMENTO", "SAL", "% SAL",
-        ],
+        exact=["% COMPLETAMENTO", "PERCENTUALE COMPLETAMENTO", "COMPLETAMENTO", "SAL", "% SAL"],
     )
-
     if col is not None:
         return col
 
     col = trova_colonna(
         df,
         contains_any=["completamento", "percentuale", "% sal"],
-        exclude=[
-            "atteso", "previsto", "target", "pianificato",
-            "rosso", "giallo", "verde",
-        ],
+        exclude=["atteso", "previsto", "target", "pianificato", "rosso", "giallo", "verde"],
     )
-
     if col is not None:
         return col
 
-    return trova_colonna(
-        df,
-        contains_any=["sal"],
-        exclude=["atteso", "previsto", "target", "pianificato"],
-    )
+    return trova_colonna(df, contains_any=["sal"], exclude=["atteso", "previsto", "target", "pianificato"])
 
 
 def trova_colonna_stato(df):
-    return trova_colonna(
-        df,
-        exact=["STATO", "STATUS", "STATO PROGETTO"],
-        contains_any=["stato", "status"],
-    )
+    return trova_colonna(df, exact=["STATO", "STATUS", "STATO PROGETTO"], contains_any=["stato", "status"])
 
 
 def trova_colonna_fatto(df):
     col = trova_colonna(
         df,
         exact=[
-            "FATTO (GIORNI)", "FATTO", "GIORNI FATTI",
-            "GIORNI EFFETTUATI", "GIORNI FATTO", "GG FATTI",
-            "GG FATTO", "GIORNI UOMO FATTI", "FATTI", "GIORNI FATTO (GG)"
+            "FATTO (GIORNI)", "FATTO", "GIORNI FATTI", "GIORNI EFFETTUATI",
+            "GIORNI FATTO", "GG FATTI", "GG FATTO", "GIORNI UOMO FATTI", "FATTI", "GIORNI FATTO (GG)"
         ],
         contains_any=["fatto", "fatti", "effettuati", "svolti"],
         exclude=["da fare", "da_fare", "atteso", "previsto", "target", "pianificato"]
     )
     if col is not None:
         return col
-
     return trova_colonna(df, contains_all=["giorn", "fatt"])
 
 
@@ -482,15 +454,23 @@ def trova_colonna_da_fare(df):
         exact=[
             "DA FARE (GIORNI)", "DA FARE", "GIORNI DA FARE",
             "GIORNI RESIDUI", "RESIDUO", "RESIDUI", "GG DA FARE",
-            "GG RESIDUI", "GIORNI RIMANENTI", "RIMANENTI"
+            "GG RESIDUI", "GIORNI RIMANENTI", "RIMANENTI",
+            "TOT GIORNI RESIDUI", "TOT ORE RESIDUE"
         ],
         contains_any=["da fare", "da_fare", "residui", "residuo", "rimanenti"],
-        exclude=["fatto", "fatti", "atteso", "previsto"]
+        exclude=["fatto", "fatti", "atteso", "previsto", "minuti", "ore"]
     )
     if col is not None:
         return col
-
     return trova_colonna(df, contains_all=["giorn", "fare"])
+
+
+def trova_colonna_lavoro_totale_ore(df):
+    return trova_colonna(
+        df,
+        exact=["TOT ORE", "TOT ORE PROGETTO", "ORE TOTALI", "VALORE"],
+        contains_any=["tot ore", "ore totali", "valore"]
+    )
 
 
 def trova_colonna_sal_atteso(df):
@@ -510,57 +490,6 @@ def trova_colonna_team(df):
         contains_any=["team", "responsabile", "consulente", "owner"],
     )
 
-
-# ============================================================
-# STATO SORGENTE
-# ============================================================
-
-def stato_sorgente_e_completo(value):
-    if value is None or pd.isna(value):
-        return False
-
-    stato = normalizza_testo(value)
-    stati_completati = {
-        "completo", "completato", "completed", "chiuso",
-        "concluso", "terminato", "finito",
-    }
-
-    return stato in stati_completati or stato.startswith("complet")
-
-
-# ============================================================
-# STATO UFFICIALE PROGETTO
-# ============================================================
-
-def normalizza_stato_progetto(stato_sorgente, sal):
-    if stato_sorgente_e_completo(stato_sorgente):
-        return "Completato"
-
-    return stato_da_sal(sal)
-
-
-# ============================================================
-# TIPO SAL
-# ============================================================
-
-def tipo_sal_da_nome(nome):
-    nome_norm = normalizza_testo(nome).replace(" ", "")
-
-    if "(epal+mgio)" in nome_norm or "(mgio+epal)" in nome_norm:
-        return "EPAL+MGIO"
-
-    if "(epal)" in nome_norm:
-        return "EPAL"
-
-    if "(mgio)" in nome_norm:
-        return "MGIO"
-
-    return None
-
-
-# ============================================================
-# COLONNE GIORNI SAL
-# ============================================================
 
 def trova_colonne_giorni_sal(df, nome_foglio):
     col_fatto = trova_colonna_fatto(df)
@@ -592,7 +521,204 @@ def trova_colonne_giorni_sal(df, nome_foglio):
 
 
 # ============================================================
-# RIGHE ATTIVITÀ VALIDE
+# ESTREZIONE METRICHE MINDS_SAL / MINDS_TASK
+# ============================================================
+
+def calcola_metriche_minds(fogli):
+    """
+    Legge MINDS_SAL e MINDS_task dalla Dashboard intermedia:
+    - Giorni Totali = TOT ore / 8
+    - Giorni Fatti = Giorni Totali - Giorni Residui
+    """
+    if "MINDS_SAL" not in fogli or "MINDS_task" not in fogli:
+        return {}
+
+    df_sal = fogli["MINDS_SAL"]
+    df_task = fogli["MINDS_task"]
+
+    col_proj_sal = trova_colonna_progetto(df_sal)
+    col_res = trova_colonna_da_fare(df_sal)
+
+    col_proj_task = trova_colonna_progetto(df_task)
+    col_ore = trova_colonna_lavoro_totale_ore(df_task)
+
+    if not col_proj_sal or not col_res or not col_proj_task or not col_ore:
+        return {}
+
+    # Mappatura ore totali da MINDS_task
+    ore_totali_mappa = {}
+    for _, row in df_task.iterrows():
+        key = chiave_progetto(row[col_proj_task])
+        if key:
+            val_ore = serie_numerica(pd.Series([row[col_ore]])).iloc[0]
+            if pd.notna(val_ore):
+                ore_totali_mappa[key] = ore_totali_mappa.get(key, 0.0) + float(val_ore)
+
+    # Calcolo dei Giorni Fatti = Totali (ore/8) - Residui
+    metriche_minds = {}
+    for _, row in df_sal.iterrows():
+        key = chiave_progetto(row[col_proj_sal])
+        if not key:
+            continue
+
+        residuo = serie_numerica(pd.Series([row[col_res]])).iloc[0]
+        ore_tot = ore_totali_mappa.get(key, float("nan"))
+
+        if pd.notna(ore_tot):
+            giorni_totali = ore_tot / 8.0
+            giorni_da_fare = float(residuo) if pd.notna(residuo) else 0.0
+            giorni_fatti = max(0.0, giorni_totali - giorni_da_fare)
+
+            metriche_minds[key] = {
+                "giorni_totali": giorni_totali,
+                "giorni_da_fare": giorni_da_fare,
+                "giorni_fatti": giorni_fatti,
+            }
+
+    return metriche_minds
+
+
+def arricchisci_portafoglio_minds(df_portfolio, metriche_minds):
+    """
+    Applica i giorni calcolati ai progetti nella Dashboard.
+    """
+    if df_portfolio.empty or not metriche_minds:
+        return df_portfolio
+
+    out = df_portfolio.copy()
+    for idx in out.index:
+        key = chiave_progetto(out.at[idx, "Progetto"])
+        if key in metriche_minds:
+            m = metriche_minds[key]
+            out.at[idx, "Fatto"] = m["giorni_fatti"]
+            out.at[idx, "Da fare"] = m["giorni_da_fare"]
+
+            tot = m["giorni_totali"]
+            if tot > 0:
+                sal_calc = (m["giorni_fatti"] / tot) * 100.0
+                out.at[idx, "SAL sorgente"] = sal_calc
+                out.at[idx, "SAL"] = min(max(sal_calc, 0.0), 100.0)
+                out.at[idx, "Stato"] = stato_da_sal(sal_calc)
+
+    return out
+
+# ============================================================
+# RICONOSCIMENTO FOGLI E RICERCA PROGETTI
+# ============================================================
+
+def tipo_sal_da_nome(nome):
+    nome_norm = normalizza_testo(nome).replace(" ", "")
+    if "(epal+mgio)" in nome_norm or "(mgio+epal)" in nome_norm:
+        return "EPAL+MGIO"
+    if "(epal)" in nome_norm:
+        return "EPAL"
+    if "(mgio)" in nome_norm:
+        return "MGIO"
+    return None
+
+
+def estrai_nome_progetto_da_foglio_sal(nome_foglio):
+    if nome_foglio is None:
+        return ""
+    testo = str(nome_foglio).strip()
+    testo = re.sub(r"^\s*sal[_\s-]*", "", testo, flags=re.IGNORECASE)
+    testo = re.sub(r"\s*\((?:EPAL|MGIO|EPAL\s*\+\s*MGIO|MGIO\s*\+\s*EPAL)\)\s*$", "", testo, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", testo.replace("_", " ")).strip()
+
+
+def score_match_foglio(progetto, foglio, team=None):
+    p_key = chiave_progetto(pulisci_nome_progetto(progetto))
+    f_key = chiave_progetto(estrai_nome_progetto_da_foglio_sal(foglio))
+
+    if not p_key or not f_key:
+        return 0.0
+    if p_key == f_key:
+        return 1.0
+
+    if ("anal" in p_key and "pred" in p_key) and ("anal" in f_key and "pred" in f_key):
+        return 0.95
+
+    p_ns, f_ns = p_key.replace(" ", ""), f_key.replace(" ", "")
+    if p_ns == f_ns:
+        return 0.98
+    if f_ns in p_ns or p_ns in f_ns:
+        if min(len(p_ns), len(f_ns)) / max(len(p_ns), len(f_ns)) >= 0.35:
+            return 0.85
+
+    p_words = tokenizza(pulisci_nome_progetto(progetto))
+    f_words = tokenizza(estrai_nome_progetto_da_foglio_sal(foglio))
+    
+    if p_words and f_words:
+        matches = sum(1 for fw in f_words if any(pw.startswith(fw) or fw.startswith(pw) for pw in p_words))
+        if matches > 0 and matches == len(f_words):
+            return 0.80 + (0.15 * (matches / max(len(p_words), len(f_words))))
+
+        intersection = p_words & f_words
+        if intersection:
+            jaccard = len(intersection) / len(p_words | f_words)
+            if jaccard >= 0.30:
+                return 0.70 + (0.20 * jaccard)
+
+    seq_ratio = SequenceMatcher(None, p_key, f_key).ratio()
+    if seq_ratio >= 0.60:
+        return seq_ratio
+    return 0.0
+
+
+def opport_ricerca_foglio(progetto, filtro_team, sheet_names, soglia_minima=0.35):
+    candidati = []
+    for nome in sheet_names:
+        norm_nome = normalizza_testo(nome)
+        if not norm_nome.startswith("sal") or "gantt" in norm_nome:
+            continue
+        tipo = tipo_sal_da_nome(nome)
+        if filtro_team is None or tipo in {filtro_team, "EPAL+MGIO", None}:
+            candidati.append(nome)
+
+    if not candidati:
+        return None, 0.0
+        
+    scores = sorted(
+        [(nome, score_match_foglio(progetto, nome, filtro_team)) for nome in candidati],
+        key=lambda x: x[1],
+        reverse=True
+    )
+    if scores and scores[0][1] >= soglia_minima:
+        return scores[0]
+    return None, 0.0
+
+
+def trova_foglio_sal_migliore(progetto, team, sheet_names):
+    foglio, score = opport_ricerca_foglio(progetto, team, sheet_names, 0.35)
+    if foglio:
+        return foglio, score
+    return opport_ricerca_foglio(progetto, None, sheet_names, 0.35)
+
+
+def lista_fogli_sal(sheet_names, team=None):
+    risultati = []
+    for nome in sheet_names:
+        norm = normalizza_testo(nome)
+        if not norm.startswith("sal") or "gantt" in norm:
+            continue
+            
+        tipo = tipo_sal_da_nome(nome)
+        if team is None:
+            risultati.append(nome)
+        elif team == "EPAL" and tipo in {"EPAL", "EPAL+MGIO"}:
+            risultati.append(nome)
+        elif team == "MGIO" and tipo in {"MGIO", "EPAL+MGIO"}:
+            risultati.append(nome)
+        elif team == "EPAL+MGIO" and tipo == "EPAL+MGIO":
+            risultati.append(nome)
+        elif team not in {"EPAL", "MGIO", "EPAL+MGIO"}:
+            risultati.append(nome)
+            
+    return risultati
+
+
+# ============================================================
+# GESTIONE RIGHE E CALCOLO GIORNI
 # ============================================================
 
 def testo_non_nan(serie):
@@ -602,31 +728,12 @@ def testo_non_nan(serie):
 def mask_righe_attivita_valide(df, col_attivita=None):
     if col_attivita is None:
         return pd.Series(True, index=df.index, dtype=bool)
-
     testo = df[col_attivita].astype(str).map(normalizza_testo)
+    return testo.ne("") & testo_non_nan(testo) & ~testo.str.match(r"^(totale|totali|total)\b", na=False)
 
-    mask = (
-        testo.ne("")
-        & testo_non_nan(testo)
-        & ~testo.str.match(
-            r"^(totale|totali|total)\b",
-            na=False,
-        )
-    )
-
-    return mask
-
-
-# ============================================================
-# CALCOLO GIORNI DAL SAL
-# ============================================================
 
 def calcola_giorni_progetto(df_sal, nome_foglio):
-    (col_fatto, col_da_fare, fonte_colonne) = trova_colonne_giorni_sal(
-        df_sal,
-        nome_foglio
-    )
-
+    col_fatto, col_da_fare, fonte_colonne = trova_colonne_giorni_sal(df_sal, nome_foglio)
     risultato_vuoto = {
         "disponibile": False,
         "giorni_fatti": float("nan"),
@@ -639,18 +746,49 @@ def calcola_giorni_progetto(df_sal, nome_foglio):
         "fonte": fonte_colonne,
     }
 
-    if col_fatto is None or col_da_fare is None:
+    if col_fatto is None and col_da_fare is None:
         return risultato_vuoto
 
-    fatto = serie_numerica(df_sal[col_fatto]).clip(lower=0)
-    da_fare = serie_numerica(df_sal[col_da_fare]).clip(lower=0)
-
     col_attivita = trova_colonna_attivita(df_sal)
-    mask = mask_righe_attivita_valide(df_sal, col_attivita)
-    mask &= (fatto.notna() | da_fare.notna())
+    df_valido = df_sal.loc[mask_righe_attivita_valide(df_sal, col_attivita)].copy()
+    if df_valido.empty:
+        return risultato_vuoto
 
-    fatto = fatto.loc[mask]
-    da_fare = da_fare.loc[mask]
+    col_sal = trova_colonna_sal(df_sal)
+    if col_sal:
+        sal_serie = percentuale_da_excel(df_valido[col_sal])
+    else:
+        sal_serie = pd.Series(float("nan"), index=df_valido.index)
+
+    if col_fatto:
+        fatto = serie_numerica(df_valido[col_fatto]).clip(lower=0)
+    else:
+        fatto = pd.Series(float("nan"), index=df_valido.index)
+        
+    if col_da_fare:
+        da_fare = serie_numerica(df_valido[col_da_fare]).clip(lower=0)
+    else:
+        da_fare = pd.Series(float("nan"), index=df_valido.index)
+
+    def ricava_fatto_complementare(f, r, s):
+        if pd.notna(f) and f > 0:
+            return f
+        if pd.isna(s) or pd.isna(r):
+            return f
+        if s <= 0:
+            return 0.0
+        if s >= 100:
+            return f
+        return r * (s / (100.0 - s))
+
+    fatto = pd.Series(
+        [ricava_fatto_complementare(f, r, s) for f, r, s in zip(fatto, da_fare, sal_serie)], 
+        index=df_valido.index
+    )
+
+    mask_valida = (fatto.notna() | da_fare.notna())
+    fatto = fatto.loc[mask_valida]
+    da_fare = da_fare.loc[mask_valida]
 
     if fatto.empty and da_fare.empty:
         return risultato_vuoto
@@ -661,25 +799,22 @@ def calcola_giorni_progetto(df_sal, nome_foglio):
 
     if totale <= 0:
         return {
-            **risultato_vuoto,
-            "disponibile": True,
-            "giorni_fatti": tot_fatto,
-            "giorni_da_fare": tot_da_fare,
-            "giorni_totali": totale,
-            "pct_fatti": 0.0,
-            "pct_da_fare": 0.0,
+            **risultato_vuoto, 
+            "disponibile": True, 
+            "giorni_fatti": tot_fatto, 
+            "giorni_da_fare": tot_da_fare, 
+            "giorni_totali": totale, 
+            "pct_fatti": 0.0, 
+            "pct_da_fare": 0.0
         }
-
-    pct_fatti = (tot_fatto / totale) * 100
-    pct_da_fare = (tot_da_fare / totale) * 100
 
     return {
         "disponibile": True,
         "giorni_fatti": tot_fatto,
         "giorni_da_fare": tot_da_fare,
         "giorni_totali": totale,
-        "pct_fatti": pct_fatti,
-        "pct_da_fare": pct_da_fare,
+        "pct_fatti": (tot_fatto / totale) * 100,
+        "pct_da_fare": (tot_da_fare / totale) * 100,
         "col_fatto": col_fatto,
         "col_da_fare": col_da_fare,
         "fonte": fonte_colonne,
@@ -689,14 +824,13 @@ def calcola_giorni_progetto(df_sal, nome_foglio):
 def calcola_giorni_da_gantt(fatto, da_fare):
     if pd.isna(fatto) or pd.isna(da_fare):
         return None
-
     fatto = max(float(fatto), 0)
     da_fare = max(float(da_fare), 0)
     totale = fatto + da_fare
-
+    
     if totale <= 0:
         return None
-
+        
     return {
         "disponibile": True,
         "giorni_fatti": fatto,
@@ -708,77 +842,53 @@ def calcola_giorni_da_gantt(fatto, da_fare):
     }
 
 
-# ============================================================
-# PASSWORD
-# ============================================================
+def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names, sal_gantt=None):
+    team_norm = normalizza_team(team)
 
-def check_password():
-    if "password_correct" not in st.session_state:
-        st.session_state["password_correct"] = False
+    if team_norm == "EPAL+MGIO":
+        foglio_epal, _ = opport_ricerca_foglio(progetto, "EPAL", sheet_names, 0.35)
+        foglio_mgio, _ = opport_ricerca_foglio(progetto, "MGIO", sheet_names, 0.35)
 
-    if st.session_state["password_correct"]:
-        return True
-
-    st.title("🔒 Accesso riservato")
-    st.caption("Dashboard Monitoraggio SAL MiniPIA")
-
-    try:
-        password_attesa = st.secrets["PASSWORD_TEAM"]
-    except Exception:
-        st.error("Il secret PASSWORD_TEAM non è configurato.")
-        return False
-
-    password = st.text_input(
-        "Inserisci la password del team",
-        type="password",
-    )
-
-    if st.button("Accedi", type="primary", use_container_width=True):
-        if password == password_attesa:
-            st.session_state["password_correct"] = True
-            st.rerun()
+        if foglio_epal and foglio_epal in fogli:
+            res_epal = calcola_giorni_progetto(fogli[foglio_epal], foglio_epal)
         else:
-            st.error("Password errata.")
+            res_epal = {"disponibile": False}
+            
+        if foglio_mgio and foglio_mgio in fogli:
+            res_mgio = calcola_giorni_progetto(fogli[foglio_mgio], foglio_mgio)
+        else:
+            res_mgio = {"disponibile": False}
 
-    return False
+        valid_epal = res_epal["disponibile"]
+        valid_mgio = res_mgio["disponibile"]
 
+        if foglio_epal and foglio_mgio and foglio_epal != foglio_mgio and valid_epal and valid_mgio:
+            return (res_epal["giorni_fatti"] + res_mgio["giorni_fatti"]), (res_epal["giorni_da_fare"] + res_mgio["giorni_da_fare"])
+            
+        if valid_epal:
+            return res_epal["giorni_fatti"], res_epal["giorni_da_fare"]
+            
+        if valid_mgio:
+            return res_mgio["giorni_fatti"], res_mgio["giorni_da_fare"]
 
-# ============================================================
-# CARICAMENTO GOOGLE SHEETS
-# ============================================================
+        foglio_comb, _ = opport_ricerca_foglio(progetto, None, sheet_names, 0.35)
+        if foglio_comb and foglio_comb in fogli:
+            res_comb = calcola_giorni_progetto(fogli[foglio_comb], foglio_comb)
+            if res_comb["disponibile"]:
+                return res_comb["giorni_fatti"], res_comb["giorni_da_fare"]
 
-@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
-def carica_workbook(sheet_id):
-    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+        return float("nan"), float("nan")
+    else:
+        foglio_single, _ = opport_ricerca_foglio(progetto, team_norm, sheet_names, 0.35)
+        if not foglio_single:
+            foglio_single, _ = opport_ricerca_foglio(progetto, None, sheet_names, 0.35)
 
-    request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        if foglio_single and foglio_single in fogli:
+            res = calcola_giorni_progetto(fogli[foglio_single], foglio_single)
+            if res["disponibile"]:
+                return res["giorni_fatti"], res["giorni_da_fare"]
 
-    with urlopen(request, timeout=60) as response:
-        contenuto = response.read()
-
-    fogli = pd.read_excel(
-        BytesIO(contenuto),
-        sheet_name=None,
-        engine="openpyxl",
-    )
-
-    fogli = {
-        nome: pulisci_dataframe(df)
-        for nome, df in fogli.items()
-    }
-
-    return (fogli, ora_italiana())
-
-
-# ============================================================
-# GANTT COMBINATO
-# ============================================================
-
-def trova_gantt_combinato(sheet_names):
-    for nome in GANTT_COMBINATI_POSSIBILI:
-        if nome in sheet_names:
-            return nome
-    return None
+        return float("nan"), float("nan")
 
 
 # ============================================================
@@ -803,287 +913,205 @@ def costruisci_portafoglio(df, team, source_sheet):
     out["Progetto"] = out["Progetto"].astype(str).str.strip()
 
     chiavi = out["Progetto"].map(chiave_progetto)
-    mask = (
-        chiavi.ne("")
-        & ~chiavi.isin({"nan", "none", "totale", "totali", "total"})
-    )
-
+    mask = chiavi.ne("") & ~chiavi.isin({"nan", "none", "totale", "totali", "total"})
     out = out.loc[mask].copy()
     indici = out.index
-
     out["Team"] = team
 
-    if col_fatto is not None:
+    if col_fatto:
         out["Fatto"] = serie_numerica(df.loc[indici, col_fatto]).clip(lower=0)
     else:
         out["Fatto"] = float("nan")
-
-    if col_da_fare is not None:
+        
+    if col_da_fare:
         out["Da fare"] = serie_numerica(df.loc[indici, col_da_fare]).clip(lower=0)
     else:
         out["Da fare"] = float("nan")
-
-    if col_sal is not None:
+    
+    if col_sal:
         out["SAL sorgente"] = percentuale_da_excel(df.loc[indici, col_sal])
     else:
         denominatore = out["Fatto"] + out["Da fare"]
-        out["SAL sorgente"] = (
-            out["Fatto"].div(denominatore.where(denominatore > 0)) * 100
-        )
+        out["SAL sorgente"] = (out["Fatto"].div(denominatore.where(denominatore > 0)) * 100)
 
     out["SAL"] = out["SAL sorgente"].clip(lower=0, upper=100)
     out["Anomalia SAL"] = (out["SAL sorgente"] < 0) | (out["SAL sorgente"] > 100)
 
-    if col_stato is not None:
-        stato_sorgente = df.loc[indici, col_stato]
-        out["Stato sorgente"] = (
-            stato_sorgente.where(stato_sorgente.notna(), "").astype(str).str.strip()
-        )
+    def fallback_fatto(riga):
+        f, r, s = riga["Fatto"], riga["Da fare"], riga["SAL"]
+        if pd.notna(f) and f > 0:
+            return f
+        if pd.isna(s) or pd.isna(r):
+            return f
+        if s <= 0:
+            return 0.0
+        if s >= 100:
+            return r
+        return r * (s / (100.0 - s))
+
+    out["Fatto"] = out.apply(fallback_fatto, axis=1)
+
+    if col_sal is None:
+        denominatore = out["Fatto"] + out["Da fare"]
+        out["SAL sorgente"] = (out["Fatto"].div(denominatore.where(denominatore > 0)) * 100)
+        out["SAL"] = out["SAL sorgente"].clip(lower=0, upper=100)
+
+    if col_stato:
+        out["Stato sorgente"] = df.loc[indici, col_stato].where(df.loc[indici, col_stato].notna(), "").astype(str).str.strip()
     else:
         out["Stato sorgente"] = ""
 
-    out["Stato"] = [
-        normalizza_stato_progetto(stato_sorg, sal)
-        for stato_sorg, sal in zip(out["Stato sorgente"], out["SAL"])
-    ]
+    out["Stato"] = [normalizza_stato_progetto(ss, sal) for ss, sal in zip(out["Stato sorgente"], out["SAL"])]
 
-    if col_sal_atteso is not None:
-        out["SAL atteso"] = percentuale_da_excel(
-            df.loc[indici, col_sal_atteso]
-        ).clip(lower=0, upper=100)
+    if col_sal_atteso:
+        out["SAL atteso"] = percentuale_da_excel(df.loc[indici, col_sal_atteso]).clip(lower=0, upper=100)
         out["Scostamento"] = out["SAL"] - out["SAL atteso"]
     else:
         out["SAL atteso"] = float("nan")
         out["Scostamento"] = float("nan")
 
     out["Foglio origine"] = source_sheet
-
     return out.reset_index(drop=True)
 
 
-# ============================================================
-# NORMALIZZAZIONE TEAM
-# ============================================================
-
-def normalizza_team(value):
-    text = normalizza_testo(value)
-    ha_epal = "epal" in text
-    ha_mgio = "mgio" in text
-
-    if ha_epal and ha_mgio:
-        return "EPAL+MGIO"
-
-    if ha_epal:
-        return "EPAL"
-
-    if ha_mgio:
-        return "MGIO"
-
-    return "N/D"
-
-
-def team_da_insieme(teams):
-    teams = {team for team in teams if team and team != "N/D"}
-
-    if "EPAL+MGIO" in teams or ("EPAL" in teams and "MGIO" in teams):
-        return "EPAL+MGIO"
-
-    if "EPAL" in teams:
-        return "EPAL"
-
-    if "MGIO" in teams:
-        return "MGIO"
-
-    return "N/D"
-
-
-# ============================================================
-# PORTAFOGLIO COMBINATO
-# ============================================================
-
-def costruisci_portafoglio_combinato(
-    df,
-    portfolio_epal,
-    portfolio_mgio,
-    source_sheet,
-):
+def costruisci_portafoglio_combinato(df, portfolio_epal, portfolio_mgio, source_sheet):
     base = costruisci_portafoglio(df, "N/D", source_sheet)
     if base.empty:
         return base
 
-    epal_keys = (
-        set(portfolio_epal["Progetto"].map(chiave_progetto))
-        if not portfolio_epal.empty and "Progetto" in portfolio_epal.columns
-        else set()
-    )
-
-    mgio_keys = (
-        set(portfolio_mgio["Progetto"].map(chiave_progetto))
-        if not portfolio_mgio.empty and "Progetto" in portfolio_mgio.columns
-        else set()
-    )
+    ek = set(portfolio_epal["Progetto"].map(chiave_progetto)) if not portfolio_epal.empty else set()
+    mk = set(portfolio_mgio["Progetto"].map(chiave_progetto)) if not portfolio_mgio.empty else set()
 
     col_progetto = trova_colonna_progetto(df)
     col_team = trova_colonna_team(df)
 
     team_map = {}
-    if col_progetto is not None and col_team is not None:
+    if col_progetto and col_team:
         for progetto, team in zip(df[col_progetto], df[col_team]):
             key = chiave_progetto(progetto)
-            if not key:
-                continue
-
             team_norm = normalizza_team(team)
-            if team_norm == "N/D":
-                continue
-
-            if key not in team_map:
-                team_map[key] = set()
-
-            team_map[key].add(team_norm)
+            if key and team_norm != "N/D":
+                if key not in team_map:
+                    team_map[key] = set()
+                team_map[key].add(team_norm)
 
     def assegna_team(progetto):
         key = chiave_progetto(progetto)
         if key in team_map:
-            team_spec = team_da_insieme(team_map[key])
-            if team_spec != "N/D":
-                return team_spec
-
-        in_epal = key in epal_keys
-        in_mgio = key in mgio_keys
-
-        if in_epal and in_mgio:
+            ts = team_da_insieme(team_map[key])
+            if ts != "N/D":
+                return ts
+        if key in ek and key in mk:
             return "EPAL+MGIO"
-
-        if in_epal:
+        if key in ek:
             return "EPAL"
-
-        if in_mgio:
+        if key in mk:
             return "MGIO"
-
         return "N/D"
 
     base["Team"] = base["Progetto"].apply(assegna_team)
     return base
 
 
-# ============================================================
-# CONSOLIDAMENTO PROGETTI UNIVOCI
-# ============================================================
-
 def consolida_progetti_univoci(df):
     if df is None or df.empty:
         return pd.DataFrame()
-
+        
     temp = df.copy()
     temp["Chiave progetto"] = temp["Progetto"].map(chiave_progetto)
     temp = temp[temp["Chiave progetto"].ne("")].copy()
-
     if temp.empty:
         return pd.DataFrame()
 
     righe = []
-
     for chiave, gruppo in temp.groupby("Chiave progetto", sort=False):
-        nomi_validi = [
-            str(x).strip()
-            for x in gruppo["Progetto"].tolist()
-            if pd.notna(x) and str(x).strip()
-        ]
+        nomi = [str(x).strip() for x in gruppo["Progetto"].tolist() if pd.notna(x) and str(x).strip()]
+        progetto = nomi[0] if nomi else chiave
+        team = team_da_insieme({str(x).strip() for x in gruppo["Team"].tolist() if pd.notna(x)})
 
-        progetto = nomi_validi[0] if nomi_validi else chiave
-
-        teams = {
-            str(x).strip()
-            for x in gruppo["Team"].tolist()
-            if pd.notna(x)
-        }
-
-        team = team_da_insieme(teams)
-
-        fatto_series = (
-            pd.to_numeric(gruppo["Fatto"], errors="coerce")
-            if "Fatto" in gruppo.columns
-            else pd.Series(dtype=float)
-        )
-
-        da_fare_series = (
-            pd.to_numeric(gruppo["Da fare"], errors="coerce")
-            if "Da fare" in gruppo.columns
-            else pd.Series(dtype=float)
-        )
-
-        validi_giorni = fatto_series.notna() & da_fare_series.notna()
-
-        if validi_giorni.any():
-            fatto = fatto_series.loc[validi_giorni].clip(lower=0).sum()
-            da_fare = da_fare_series.loc[validi_giorni].clip(lower=0).sum()
-            totale_giorni = fatto + da_fare
+        if "Fatto" in gruppo.columns:
+            f_ser = pd.to_numeric(gruppo["Fatto"], errors="coerce")
         else:
-            fatto = float("nan")
-            da_fare = float("nan")
-            totale_giorni = float("nan")
+            f_ser = pd.Series(dtype=float)
+            
+        if "Da fare" in gruppo.columns:
+            d_ser = pd.to_numeric(gruppo["Da fare"], errors="coerce")
+        else:
+            d_ser = pd.Series(dtype=float)
+            
+        validi_gg = f_ser.notna() & d_ser.notna()
 
-        sal_values = (
-            pd.to_numeric(gruppo["SAL sorgente"], errors="coerce")
-            .dropna()
-        )
+        if validi_gg.any():
+            fatto = f_ser.loc[validi_gg].clip(lower=0).sum()
+            da_fare = d_ser.loc[validi_gg].clip(lower=0).sum()
+            totale_gg = fatto + da_fare
+        else:
+            fatto = da_fare = totale_gg = float("nan")
 
-        if not sal_values.empty:
-            sal_sorgente = sal_values.iloc[0] if len(sal_values) == 1 else sal_values.mean()
-        elif pd.notna(totale_giorni) and totale_giorni > 0:
-            sal_sorgente = (fatto / totale_giorni) * 100
+        sal_vals = pd.to_numeric(gruppo["SAL sorgente"], errors="coerce").dropna()
+        if not sal_vals.empty:
+            sal_sorgente = sal_vals.iloc[0] if len(sal_vals) == 1 else sal_vals.mean()
+        elif pd.notna(totale_gg) and totale_gg > 0:
+            sal_sorgente = (fatto / totale_gg) * 100
         else:
             sal_vis = pd.to_numeric(gruppo["SAL"], errors="coerce").dropna()
-            sal_sorgente = sal_vis.mean() if not sal_vis.empty else float("nan")
+            if not sal_vis.empty:
+                sal_sorgente = sal_vis.mean()
+            else:
+                sal_sorgente = float("nan")
 
-        sal = min(max(float(sal_sorgente), 0), 100) if pd.notna(sal_sorgente) else float("nan")
+        if pd.notna(sal_sorgente):
+            sal = min(max(float(sal_sorgente), 0), 100)
+        else:
+            sal = float("nan")
+            
+        if "Anomalia SAL" in gruppo.columns:
+            anomalie = bool(gruppo["Anomalia SAL"].fillna(False).astype(bool).any())
+        else:
+            anomalie = False
+            
+        anomalia_cons = anomalie or (pd.notna(sal_sorgente) and (sal_sorgente < 0 or sal_sorgente > 100))
 
-        anomalie_orig = (
-            bool(gruppo["Anomalia SAL"].fillna(False).astype(bool).any())
-            if "Anomalia SAL" in gruppo.columns
-            else False
-        )
-
-        anomalia_cons = (
-            anomalie_orig
-            or (pd.notna(sal_sorgente) and (sal_sorgente < 0 or sal_sorgente > 100))
-        )
-
-        stati_sorgente = []
+        stati = []
         if "Stato sorgente" in gruppo.columns:
-            for value in gruppo["Stato sorgente"].tolist():
-                if pd.isna(value):
+            for v in gruppo["Stato sorgente"].tolist():
+                if pd.isna(v):
                     continue
-                text = str(value).strip()
-                if text and text not in stati_sorgente:
-                    stati_sorgente.append(text)
+                v_str = str(v).strip()
+                if v_str and v_str not in stati:
+                    stati.append(v_str)
 
-        stato_sorgente = " | ".join(stati_sorgente)
-
-        completo_da_sorgente = any(
-            stato_sorgente_e_completo(v)
-            for v in gruppo["Stato sorgente"].tolist()
-        ) if "Stato sorgente" in gruppo.columns else False
-
-        stato = "Completato" if completo_da_sorgente else stato_da_sal(sal)
+        stato_sorgente = " | ".join(stati)
+        
+        if "Stato sorgente" in gruppo.columns:
+            completo_sorgente = any(stato_sorgente_e_completo(v) for v in gruppo["Stato sorgente"].tolist())
+        else:
+            completo_sorgente = False
+            
+        if completo_sorgente:
+            stato = "Completato"
+        else:
+            stato = stato_da_sal(sal)
 
         sal_atteso = float("nan")
         if "SAL atteso" in gruppo.columns:
-            sal_attesi = pd.to_numeric(gruppo["SAL atteso"], errors="coerce").dropna()
-            if not sal_attesi.empty:
-                sal_atteso = sal_attesi.mean()
+            sa = pd.to_numeric(gruppo["SAL atteso"], errors="coerce").dropna()
+            if not sa.empty:
+                sal_atteso = sa.mean()
 
-        scostamento = (sal - sal_atteso) if (pd.notna(sal) and pd.notna(sal_atteso)) else float("nan")
+        if pd.notna(sal) and pd.notna(sal_atteso):
+            scostamento = sal - sal_atteso
+        else:
+            scostamento = float("nan")
 
-        fogli_origine = []
+        fogli = []
         if "Foglio origine" in gruppo.columns:
-            for value in gruppo["Foglio origine"].tolist():
-                if pd.isna(value):
+            for v in gruppo["Foglio origine"].tolist():
+                if pd.isna(v):
                     continue
-                text = str(value).strip()
-                if text and text not in fogli_origine:
-                    fogli_origine.append(text)
+                v_str = str(v).strip()
+                if v_str and v_str not in fogli:
+                    fogli.append(v_str)
 
         righe.append({
             "Progetto": progetto,
@@ -1097,902 +1125,542 @@ def consolida_progetti_univoci(df):
             "Stato": stato,
             "SAL atteso": sal_atteso,
             "Scostamento": scostamento,
-            "Foglio origine": " | ".join(fogli_origine),
-            "Occorrenze consolidate": len(gruppo),
+            "Foglio origine": " | ".join(fogli),
+            "Occorrenze consolidate": len(gruppo)
         })
 
     return pd.DataFrame(righe).reset_index(drop=True)
 
 
-# ============================================================
-# SAL COMPLESSIVO PORTAFOGLIO
-# ============================================================
-
 def portfolio_sal(df):
     if df.empty:
         return (float("nan"), "N/D")
-
-    validi_giorni = df["Fatto"].notna() & df["Da fare"].notna()
-
-    if len(df) > 0 and validi_giorni.all():
-        fatto = df["Fatto"].clip(lower=0).sum()
-        residuo = df["Da fare"].clip(lower=0).sum()
-        totale = fatto + residuo
-
-        if totale > 0:
-            return ((fatto / totale) * 100, "ponderato sui giorni")
-
+        
+    validi = df["Fatto"].notna() & df["Da fare"].notna()
+    if len(df) > 0 and validi.all():
+        f = df["Fatto"].clip(lower=0).sum()
+        r = df["Da fare"].clip(lower=0).sum()
+        if (f + r) > 0:
+            return ((f / (f + r)) * 100, "ponderato sui giorni")
+            
     sal_validi = df["SAL"].dropna()
-
     if not sal_validi.empty:
         return (sal_validi.mean(), "media dei SAL disponibili")
-
+        
     return (float("nan"), "N/D")
 
 
-# ============================================================
-# FLAG PROGETTI PRESENTI IN ENTRAMBI
-# ============================================================
-
 def aggiungi_flag_condiviso(df, portfolio_epal, portfolio_mgio):
     df = df.copy()
-
-    epal_keys = (
-        set(portfolio_epal["Progetto"].map(chiave_progetto))
-        if not portfolio_epal.empty and "Progetto" in portfolio_epal.columns
-        else set()
-    )
-
-    mgio_keys = (
-        set(portfolio_mgio["Progetto"].map(chiave_progetto))
-        if not portfolio_mgio.empty and "Progetto" in portfolio_mgio.columns
-        else set()
-    )
-
-    condivisi = epal_keys & mgio_keys
-
-    df["Presente in entrambi"] = df["Progetto"].map(chiave_progetto).isin(condivisi)
+    if not portfolio_epal.empty:
+        ek = set(portfolio_epal["Progetto"].map(chiave_progetto))
+    else:
+        ek = set()
+        
+    if not portfolio_mgio.empty:
+        mk = set(portfolio_mgio["Progetto"].map(chiave_progetto))
+    else:
+        mk = set()
+        
+    df["Presente in entrambi"] = df["Progetto"].map(chiave_progetto).isin(ek & mk)
     return df
 
 
-# ============================================================
-# FOGLI SAL
-# ============================================================
-
-def lista_fogli_sal(sheet_names, team=None):
-    risultati = []
-    for nome in sheet_names:
-        if not normalizza_testo(nome).startswith("sal"):
-            continue
-
-        if "gantt" in normalizza_testo(nome):
-            continue
-
-        tipo = tipo_sal_da_nome(nome)
-
-        if team is None:
-            risultati.append(nome)
-            continue
-
-        if team == "EPAL":
-            if tipo in {"EPAL", "EPAL+MGIO"}:
-                risultati.append(nome)
-        elif team == "MGIO":
-            if tipo in {"MGIO", "EPAL+MGIO"}:
-                risultati.append(nome)
-        elif team == "EPAL+MGIO":
-            if tipo == "EPAL+MGIO":
-                risultati.append(nome)
-        else:
-            risultati.append(nome)
-
-    return risultati
-
-
-# ============================================================
-# MATCH AUTOMATICO PROGETTO -> SAL
-# ============================================================
-
-def estrai_nome_progetto_da_foglio_sal(nome_foglio):
-    if nome_foglio is None:
-        return ""
-
-    testo = str(nome_foglio).strip()
-    testo = re.sub(r"^\s*sal[_\s-]*", "", testo, flags=re.IGNORECASE)
-    testo = re.sub(
-        r"\s*\((?:EPAL|MGIO|EPAL\s*\+\s*MGIO|MGIO\s*\+\s*EPAL)\)\s*$",
-        "",
-        testo,
-        flags=re.IGNORECASE,
-    )
-    testo = testo.replace("_", " ")
-    return re.sub(r"\s+", " ", testo).strip()
-
-
-def score_match_foglio(progetto, foglio, team=None):
-    p_str = pulisci_nome_progetto(progetto)
-    f_str = estrai_nome_progetto_da_foglio_sal(foglio)
-
-    p_key = chiave_progetto(p_str)
-    f_key = chiave_progetto(f_str)
-
-    if not p_key or not f_key:
-        return 0.0
-
-    if p_key == f_key:
-        return 1.0
-
-    # Alias specifico per Analisi Predittiva
-    if ("anal" in p_key and "pred" in p_key) and ("anal" in f_key and "pred" in f_key):
-        return 0.95
-
-    # 1. Confronto senza spazi (es. "timeout" vs "time out")
-    p_nospace = p_key.replace(" ", "")
-    f_nospace = f_key.replace(" ", "")
-
-    if p_nospace == f_nospace:
-        return 0.98
-
-    if f_nospace in p_nospace or p_nospace in f_nospace:
-        ratio = min(len(p_nospace), len(f_nospace)) / max(len(p_nospace), len(f_nospace))
-        if ratio >= 0.35:
-            return 0.85
-
-    # 2. Matching per abbreviazioni e prefissi (es. "fis" -> "fisioterapia")
-    p_words = tokenizza(p_str)
-    f_words = tokenizza(f_str)
-
-    if p_words and f_words:
-        matches = 0
-        for fw in f_words:
-            if any(pw.startswith(fw) or fw.startswith(pw) for pw in p_words):
-                matches += 1
-
-        if matches > 0 and matches == len(f_words):
-            return 0.80 + (0.15 * (matches / max(len(p_words), len(f_words))))
-
-        intersection = p_words & f_words
-        if intersection:
-            jaccard = len(intersection) / len(p_words | f_words)
-            if jaccard >= 0.30:
-                return 0.70 + (0.20 * jaccard)
-
-    seq_ratio = SequenceMatcher(None, p_key, f_key).ratio()
-    if seq_ratio >= 0.60:
-        return seq_ratio
-
-    return 0.0
-
-
-def opport_ricerca_foglio(progetto, filtro_team, sheet_names, soglia_minima=0.35):
-    candidati = []
-    for nome in sheet_names:
-        norm_nome = normalizza_testo(nome)
-        if not norm_nome.startswith("sal"):
-            continue
-        if "gantt" in norm_nome:
-            continue
-
-        tipo = tipo_sal_da_nome(nome)
-        if filtro_team is not None:
-            if tipo in {filtro_team, "EPAL+MGIO", None}:
-                candidati.append(nome)
-        else:
-            candidati.append(nome)
-
-    if not candidati:
-        return None, 0.0
-
-    scores = [(nome, score_match_foglio(progetto, nome, filtro_team)) for nome in candidati]
-    scores.sort(key=lambda x: x[1], reverse=True)
-
-    if scores and scores[0][1] >= soglia_minima:
-        return scores[0]
-
-    return None, 0.0
-
-
-def trova_foglio_sal_migliore(progetto, team, sheet_names):
-    foglio, score = opport_ricerca_foglio(progetto, team, sheet_names, soglia_minima=0.35)
-    if not foglio:
-        foglio, score = opport_ricerca_foglio(progetto, None, sheet_names, soglia_minima=0.35)
-
-    return foglio, score
-
-
-def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names, sal_gantt=None):
-    team_norm = normalizza_team(team)
-
-    if team_norm == "EPAL+MGIO":
-        foglio_epal, s_epal = opport_ricerca_foglio(progetto, "EPAL", sheet_names, soglia_minima=0.35)
-        foglio_mgio, s_mgio = opport_ricerca_foglio(progetto, "MGIO", sheet_names, soglia_minima=0.35)
-
-        res_epal = (
-            calcola_giorni_progetto(fogli[foglio_epal], foglio_epal)
-            if foglio_epal and foglio_epal in fogli
-            else {"disponibile": False}
-        )
-        res_mgio = (
-            calcola_giorni_progetto(fogli[foglio_mgio], foglio_mgio)
-            if foglio_mgio and foglio_mgio in fogli
-            else {"disponibile": False}
-        )
-
-        valid_epal = res_epal["disponibile"]
-        valid_mgio = res_mgio["disponibile"]
-
-        if foglio_epal and foglio_mgio and foglio_epal != foglio_mgio and valid_epal and valid_mgio:
-            fatto_tot = res_epal["giorni_fatti"] + res_mgio["giorni_fatti"]
-            da_fare_tot = res_epal["giorni_da_fare"] + res_mgio["giorni_da_fare"]
-            return fatto_tot, da_fare_tot
-
-        if valid_epal:
-            return res_epal["giorni_fatti"], res_epal["giorni_da_fare"]
-
-        if valid_mgio:
-            return res_mgio["giorni_fatti"], res_mgio["giorni_da_fare"]
-
-        foglio_comb, _ = opport_ricerca_foglio(progetto, None, sheet_names, soglia_minima=0.35)
-        if foglio_comb and foglio_comb in fogli:
-            res_comb = calcola_giorni_progetto(fogli[foglio_comb], foglio_comb)
-            if res_comb["disponibile"]:
-                return res_comb["giorni_fatti"], res_comb["giorni_da_fare"]
-
-        return float("nan"), float("nan")
-
-    else:
-        foglio_single, _ = opport_ricerca_foglio(progetto, team_norm, sheet_names, soglia_minima=0.35)
-        if not foglio_single:
-            foglio_single, _ = opport_ricerca_foglio(progetto, None, sheet_names, soglia_minima=0.35)
-
-        if foglio_single and foglio_single in fogli:
-            res = calcola_giorni_progetto(fogli[foglio_single], foglio_single)
-            if res["disponibile"]:
-                return res["giorni_fatti"], res["giorni_da_fare"]
-
-        return float("nan"), float("nan")
-
-
-def arricchisci_portafoglio_con_giorni_sal(df, fogli, sheet_names):
+def arricchisci_portafoglio_con_giorni_sal_dettaglio(df, fogli, sheet_names):
     if df is None or df.empty:
         return df
-
+        
     out = df.copy()
-
     for idx in out.index:
         progetto = out.at[idx, "Progetto"]
-        team = out.at[idx, "Team"] if "Team" in out.columns else "N/D"
-        sal_gantt = out.at[idx, "SAL"] if "SAL" in out.columns else float("nan")
+        if "Team" in out.columns:
+            team = out.at[idx, "Team"]
+        else:
+            team = "N/D"
+            
+        if "SAL" in out.columns:
+            sal_gantt = out.at[idx, "SAL"]
+        else:
+            sal_gantt = float("nan")
 
-        orig_fatto = out.at[idx, "Fatto"] if "Fatto" in out.columns else float("nan")
-        orig_da_fare = out.at[idx, "Da fare"] if "Da fare" in out.columns else float("nan")
+        if "Fatto" in out.columns:
+            orig_f = out.at[idx, "Fatto"]
+        else:
+            orig_f = float("nan")
+            
+        if "Da fare" in out.columns:
+            orig_d = out.at[idx, "Da fare"]
+        else:
+            orig_d = float("nan")
 
-        fatto, da_fare = calcola_giorni_da_sal_dettaglio(
-            progetto,
-            team,
-            fogli,
-            sheet_names,
-            sal_gantt=sal_gantt
-        )
-
+        fatto, da_fare = calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names, sal_gantt)
+        
         if pd.notna(fatto) and pd.notna(da_fare):
             out.at[idx, "Fatto"] = fatto
             out.at[idx, "Da fare"] = da_fare
-        elif pd.notna(orig_fatto) or pd.notna(orig_da_fare):
-            out.at[idx, "Fatto"] = orig_fatto if pd.notna(orig_fatto) else float("nan")
-            out.at[idx, "Da fare"] = orig_da_fare if pd.notna(orig_da_fare) else float("nan")
+        elif pd.notna(orig_f) or pd.notna(orig_d):
+            out.at[idx, "Fatto"] = orig_f
+            out.at[idx, "Da fare"] = orig_d
         else:
             out.at[idx, "Fatto"] = float("nan")
             out.at[idx, "Da fare"] = float("nan")
-
+            
     return out
 
 
 # ============================================================
-# DETTAGLIO ATTIVITÀ CONSOLIDATO (NO RIGHE DUPLICATE)
+# DETTAGLIO ATTIVITÀ
 # ============================================================
 
 def costruisci_attivita(df, nome_foglio):
     if df is None or df.empty:
         return pd.DataFrame()
-
-    col_attivita = trova_colonna_attivita(df)
+        
+    col_att = trova_colonna_attivita(df)
     col_sal = trova_colonna_sal(df)
-    (col_fatto, col_da_fare, _) = trova_colonne_giorni_sal(df, nome_foglio)
-
-    if col_attivita is None:
+    col_fatto, col_da_fare, _ = trova_colonne_giorni_sal(df, nome_foglio)
+    
+    if col_att is None:
         return pd.DataFrame()
 
-    out = pd.DataFrame({"Attività": df[col_attivita]})
-    out["Attività"] = out["Attività"].astype(str).str.strip()
-
-    mask = mask_righe_attivita_valide(df, col_attivita)
+    out = pd.DataFrame({"Attività": df[col_att].astype(str).str.strip()})
+    mask = mask_righe_attivita_valide(df, col_att)
     out = out.loc[mask].copy()
     indici = out.index
 
-    out["Fatto"] = (
-        serie_numerica(df.loc[indici, col_fatto]).clip(lower=0)
-        if col_fatto
-        else float("nan")
-    )
-    out["Da fare"] = (
-        serie_numerica(df.loc[indici, col_da_fare]).clip(lower=0)
-        if col_da_fare
-        else float("nan")
-    )
-
-    if col_sal is not None:
+    if col_sal:
         out["SAL sorgente"] = percentuale_da_excel(df.loc[indici, col_sal])
     else:
+        out["SAL sorgente"] = float("nan")
+        
+    if col_fatto:
+        fatto = serie_numerica(df.loc[indici, col_fatto]).clip(lower=0)
+    else:
+        fatto = pd.Series(float("nan"), index=indici)
+        
+    if col_da_fare:
+        da_fare = serie_numerica(df.loc[indici, col_da_fare]).clip(lower=0)
+    else:
+        da_fare = pd.Series(float("nan"), index=indici)
+
+    def ricava(f, r, s):
+        if pd.notna(f) and f > 0:
+            return f
+        if pd.isna(s) or pd.isna(r):
+            return f
+        if s <= 0:
+            return 0.0
+        if s >= 100:
+            return f
+        return r * (s / (100.0 - s))
+
+    out["Fatto"] = [ricava(f, r, s) for f, r, s in zip(fatto, da_fare, out["SAL sorgente"])]
+    out["Da fare"] = da_fare
+
+    if col_sal is None:
         den = out["Fatto"] + out["Da fare"]
         out["SAL sorgente"] = out["Fatto"].div(den.where(den > 0)) * 100
-
+        
     out["SAL"] = out["SAL sorgente"].clip(lower=0, upper=100)
 
-    out_consolidato = (
-        out.groupby("Attività", as_index=False)
-        .agg({
-            "SAL": "mean",
-            "SAL sorgente": "mean",
-            "Fatto": "sum",
-            "Da fare": "sum"
-        })
-    )
-
-    out_consolidato["Anomalia SAL"] = (
-        (out_consolidato["SAL sorgente"] < 0) | (out_consolidato["SAL sorgente"] > 100)
-    )
-    out_consolidato["Stato"] = out_consolidato["SAL"].apply(stato_da_sal)
-
-    return out_consolidato.dropna(subset=["SAL"], how="all").reset_index(drop=True)
+    out_cons = out.groupby("Attività", as_index=False, sort=False).agg({
+        "SAL": "mean", 
+        "SAL sorgente": "mean", 
+        "Fatto": "sum", 
+        "Da fare": "sum"
+    })
+    
+    out_cons["Anomalia SAL"] = (out_cons["SAL sorgente"] < 0) | (out_cons["SAL sorgente"] > 100)
+    out_cons["Stato"] = out_cons["SAL"].apply(stato_da_sal)
+    
+    return out_cons.dropna(subset=["SAL"], how="all").reset_index(drop=True)
 
 
 # ============================================================
-# GRAFICO RANKING
+# VISTE GRAFICHE
 # ============================================================
 
 def grafico_ranking(df, titolo, ordinamento="SAL decrescente"):
-    plot_df = df.dropna(subset=["SAL"]).copy()
-    plot_df = ordina_portafoglio(plot_df, ordinamento)
-
+    plot_df = ordina_portafoglio(df.dropna(subset=["SAL"]).copy(), ordinamento)
     if plot_df.empty:
         st.info("Nessun SAL disponibile.")
         return
 
     plot_df["Etichetta SAL"] = plot_df["SAL"].apply(formatta_percentuale)
-    plot_df["SAL sorgente display"] = plot_df["SAL sorgente"].apply(
-        lambda x: formatta_percentuale(x, 2)
-    )
-
-    ordine_progetti = plot_df["Progetto"].tolist()
+    plot_df["SAL sorgente display"] = plot_df["SAL sorgente"].apply(lambda x: formatta_percentuale(x, 2))
+    ord_progetti = plot_df["Progetto"].tolist()
 
     fig = px.bar(
-        plot_df,
-        x="SAL",
-        y="Progetto",
-        orientation="h",
+        plot_df, 
+        x="SAL", 
+        y="Progetto", 
+        orientation="h", 
         color="Stato",
-        color_discrete_map=COLORI_STATO,
-        category_orders={"Stato": ORDINE_STATI, "Progetto": ordine_progetti},
+        color_discrete_map=COLORI_STATO, 
+        category_orders={"Stato": ORDINE_STATI, "Progetto": ord_progetti},
         text="Etichetta SAL",
-        custom_data=[
-            "Team",
-            "SAL sorgente display",
-            "Stato",
-            "Stato sorgente",
-            "Anomalia SAL",
-        ],
-        labels={"SAL": "Avanzamento", "Progetto": "", "Stato": "Stato"},
+        custom_data=["Team", "SAL sorgente display", "Stato", "Stato sorgente", "Anomalia SAL"],
+        labels={"SAL": "Avanzamento", "Progetto": "", "Stato": "Stato"}, 
         title=titolo,
     )
-
     fig.update_xaxes(
-        range=[0, 100],
-        tickmode="array",
-        tickvals=list(range(0, 101, 10)),
-        ticktext=[f"{x}%" for x in range(0, 101, 10)],
-        title="SAL",
+        range=[0, 100], 
+        tickvals=list(range(0, 101, 10)), 
+        ticktext=[f"{x}%" for x in range(0, 101, 10)], 
+        title="SAL"
     )
-
     fig.update_yaxes(
-        title=None,
-        automargin=True,
-        autorange="reversed",
-        categoryorder="array",
-        categoryarray=ordine_progetti,
+        title=None, 
+        automargin=True, 
+        autorange="reversed", 
+        categoryorder="array", 
+        categoryarray=ord_progetti
     )
-
     fig.update_layout(
-        height=max(430, len(plot_df) * 38),
-        margin=dict(l=20, r=85, t=60, b=40),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="left",
-            x=0,
-        ),
+        height=max(430, len(plot_df) * 38), 
+        margin=dict(l=20, r=85, t=60, b=40), 
+        legend=dict(orientation="h", y=1.02, x=0)
     )
-
     fig.update_traces(
-        textposition="outside",
-        cliponaxis=False,
+        textposition="outside", 
+        cliponaxis=False, 
         marker_line_width=0.5,
-        hovertemplate=(
-            "<b>%{y}</b><br>"
-            "Team: %{customdata[0]}<br>"
-            "SAL visualizzato: %{x:.1f}%<br>"
-            "SAL sorgente: %{customdata[1]}<br>"
-            "Stato dashboard: %{customdata[2]}<br>"
-            "Stato GANTT: %{customdata[3]}<br>"
-            "Anomalia SAL: %{customdata[4]}"
-            "<extra></extra>"
-        ),
+        hovertemplate="<b>%{y}</b><br>Team: %{customdata[0]}<br>SAL: %{x:.1f}%<br>SAL sorgente: %{customdata[1]}<br>Stato dashboard: %{customdata[2]}<br>Stato GANTT: %{customdata[3]}<br>Anomalia: %{customdata[4]}<extra></extra>",
     )
-
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
-
-# ============================================================
-# DISTRIBUZIONE STATI
-# ============================================================
 
 def grafico_distribuzione_stati(df):
-    conteggi = (
-        df["Stato"]
-        .value_counts()
-        .reindex(ORDINE_STATI, fill_value=0)
-        .rename_axis("Stato")
-        .reset_index(name="Progetti")
-    )
-
+    conteggi = df["Stato"].value_counts().reindex(ORDINE_STATI, fill_value=0).rename_axis("Stato").reset_index(name="Progetti")
     fig = px.pie(
-        conteggi,
-        names="Stato",
-        values="Progetti",
-        hole=0.58,
+        conteggi, 
+        names="Stato", 
+        values="Progetti", 
+        hole=0.58, 
         color="Stato",
-        color_discrete_map=COLORI_STATO,
-        category_orders={"Stato": ORDINE_STATI},
-        title="Distribuzione dello stato dei progetti",
+        color_discrete_map=COLORI_STATO, 
+        category_orders={"Stato": ORDINE_STATI}, 
+        title="Distribuzione stato progetti",
     )
-
     fig.update_traces(
-        textposition="inside",
-        textinfo="percent+label",
-        hovertemplate=(
-            "<b>%{label}</b><br>"
-            "Progetti: %{value}<br>"
-            "Quota: %{percent}"
-            "<extra></extra>"
-        ),
+        textposition="inside", 
+        textinfo="percent+label", 
+        hovertemplate="<b>%{label}</b><br>Progetti: %{value}<br>Quota: %{percent}<extra></extra>"
     )
-
     fig.update_layout(
-        height=390,
-        margin=dict(l=20, r=20, t=60, b=20),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.15,
-            xanchor="center",
-            x=0.5,
-        ),
+        height=390, 
+        margin=dict(l=20, r=20, t=60, b=20), 
+        legend=dict(orientation="h", y=-0.15, xanchor="center", x=0.5)
     )
-
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
 
-# ============================================================
-# CONFRONTO TEAM
-# ============================================================
-
 def grafico_confronto_team(df):
-    ordine_team = ["EPAL", "MGIO", "EPAL+MGIO"]
     righe = []
-
-    for team in ordine_team:
+    for team in ["EPAL", "MGIO", "EPAL+MGIO"]:
         team_df = df[(df["Team"] == team) & (df["Stato"] != "Completato")].copy()
         if team_df.empty:
             continue
-
         sal, metodo = portfolio_sal(team_df)
         righe.append({
-            "Team": team,
-            "SAL": sal,
-            "Metodo": metodo,
-            "Progetti in corso": len(team_df),
+            "Team": team, 
+            "SAL": sal, 
+            "Metodo": metodo, 
+            "Progetti in corso": len(team_df)
         })
-
+        
     confronto = pd.DataFrame(righe)
-
     if confronto.empty:
-        st.info("Confronto dei progetti in corso non disponibile.")
+        st.info("Confronto progetti in corso non disponibile.")
         return
-
+        
     confronto["Etichetta"] = confronto["SAL"].apply(formatta_percentuale)
-
+    
     fig = px.bar(
-        confronto,
-        x="SAL",
-        y="Team",
-        orientation="h",
-        text="Etichetta",
+        confronto, 
+        x="SAL", 
+        y="Team", 
+        orientation="h", 
+        text="Etichetta", 
         custom_data=["Metodo", "Progetti in corso"],
-        title="Confronto SAL progetti in corso per portafoglio",
-        labels={"SAL": "SAL progetti in corso", "Team": ""},
+        title="SAL progetti in corso per team", 
+        labels={"SAL": "SAL", "Team": ""},
     )
-
     fig.update_xaxes(
-        range=[0, 100],
-        tickvals=[0, 20, 40, 60, 80, 100],
-        ticktext=["0%", "20%", "40%", "60%", "80%", "100%"],
+        range=[0, 100], 
+        tickvals=[0, 20, 40, 60, 80, 100], 
+        ticktext=["0%", "20%", "40%", "60%", "80%", "100%"]
     )
-
     fig.update_layout(
-        height=390,
-        margin=dict(l=20, r=70, t=60, b=40),
-        showlegend=False,
+        height=390, 
+        margin=dict(l=20, r=70, t=60, b=40), 
+        showlegend=False
     )
-
     fig.update_traces(
-        textposition="outside",
-        cliponaxis=False,
-        hovertemplate=(
-            "<b>%{y}</b><br>"
-            "SAL progetti in corso: %{x:.1f}%<br>"
-            "Progetti in corso: %{customdata[1]}<br>"
-            "Calcolo: %{customdata[0]}"
-            "<extra></extra>"
-        ),
+        textposition="outside", 
+        cliponaxis=False, 
+        hovertemplate="<b>%{y}</b><br>SAL: %{x:.1f}%<br>Progetti: %{customdata[1]}<br>Calcolo: %{customdata[0]}<extra></extra>"
     )
-
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
-
-# ============================================================
-# SAL REALE VS ATTESO
-# ============================================================
 
 def grafico_reale_atteso(df):
     validi = df[df["SAL atteso"].notna() & df["SAL"].notna()].copy()
     if validi.empty:
         return False
-
+        
     validi["SAL reale"] = validi["SAL"]
-
     long_df = validi.melt(
-        id_vars=["Progetto", "Team"],
-        value_vars=["SAL reale", "SAL atteso"],
-        var_name="Metrica",
-        value_name="Percentuale",
+        id_vars=["Progetto", "Team"], 
+        value_vars=["SAL reale", "SAL atteso"], 
+        var_name="Metrica", 
+        value_name="Percentuale"
     )
-
+    
     fig = px.bar(
-        long_df,
-        x="Percentuale",
-        y="Progetto",
-        color="Metrica",
-        orientation="h",
+        long_df, 
+        x="Percentuale", 
+        y="Progetto", 
+        color="Metrica", 
+        orientation="h", 
         barmode="group",
-        title="SAL reale vs SAL atteso",
-        labels={"Percentuale": "SAL", "Progetto": ""},
+        title="SAL reale vs SAL atteso", 
+        labels={"Percentuale": "SAL", "Progetto": ""}, 
         custom_data=["Team"],
     )
-
     fig.update_xaxes(
-        range=[0, 100],
-        tickvals=list(range(0, 101, 10)),
-        ticktext=[f"{x}%" for x in range(0, 101, 10)],
+        range=[0, 100], 
+        tickvals=list(range(0, 101, 10)), 
+        ticktext=[f"{x}%" for x in range(0, 101, 10)]
     )
-
     fig.update_layout(
-        height=max(430, len(validi) * 50),
-        margin=dict(l=20, r=30, t=60, b=40),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="left",
-            x=0,
-        ),
+        height=max(430, len(validi) * 50), 
+        margin=dict(l=20, r=30, t=60, b=40), 
+        legend=dict(orientation="h", y=1.02, x=0)
     )
-
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
     return True
 
 
-# ============================================================
-# GRAFICO ATTIVITÀ CON TRACCE UNIVOCHE
-# ============================================================
-
 def grafico_attivita(df_attivita, progetto):
     plot_df = df_attivita.sort_values("SAL", ascending=True).copy()
     plot_df["Etichetta"] = plot_df["SAL"].apply(formatta_percentuale)
-
+    
     fig = px.bar(
-        plot_df,
-        x="SAL",
-        y="Attività",
-        orientation="h",
-        color="Stato",
+        plot_df, 
+        x="SAL", 
+        y="Attività", 
+        orientation="h", 
+        color="Stato", 
         color_discrete_map=COLORI_STATO,
-        category_orders={"Stato": ORDINE_STATI},
-        text="Etichetta",
-        barmode="group",
-        title=f"Avanzamento attività — {progetto}",
+        category_orders={"Stato": ORDINE_STATI}, 
+        text="Etichetta", 
+        barmode="group", 
+        title=f"Avanzamento — {progetto}",
         labels={"SAL": "SAL", "Attività": "", "Stato": "Stato"},
     )
-
     fig.update_xaxes(
-        range=[0, 100],
-        tickvals=list(range(0, 101, 10)),
-        ticktext=[f"{x}%" for x in range(0, 101, 10)],
+        range=[0, 100], 
+        tickvals=list(range(0, 101, 10)), 
+        ticktext=[f"{x}%" for x in range(0, 101, 10)]
     )
-
     fig.update_yaxes(automargin=True)
-
     fig.update_layout(
-        height=max(430, len(plot_df) * 40),
-        margin=dict(l=20, r=85, t=60, b=40),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="left",
-            x=0,
-        ),
+        height=max(430, len(plot_df) * 40), 
+        margin=dict(l=20, r=85, t=60, b=40), 
+        legend=dict(orientation="h", y=1.02, x=0)
     )
-
     fig.update_traces(
-        textposition="outside",
-        cliponaxis=False,
-        marker_line_width=0.5,
+        textposition="outside", 
+        cliponaxis=False, 
+        marker_line_width=0.5
     )
-
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
-
-# ============================================================
-# BARRA FATTO / DA FARE
-# ============================================================
 
 def grafico_ripartizione_lavoro(pct_fatti, pct_da_fare):
     if pd.isna(pct_fatti) or pd.isna(pct_da_fare):
         return
-
+        
     df_progress = pd.DataFrame({
-        "Voce": ["Lavoro complessivo", "Lavoro complessivo"],
-        "Stato": ["Fatto", "Da fare"],
+        "Voce": ["Lavoro complessivo", "Lavoro complessivo"], 
+        "Stato": ["Fatto", "Da fare"], 
         "Percentuale": [pct_fatti, pct_da_fare],
-        "Etichetta": [
-            f"Fatto {formatta_percentuale(pct_fatti)}",
-            f"Da fare {formatta_percentuale(pct_da_fare)}",
-        ],
+        "Etichetta": [f"Fatto {formatta_percentuale(pct_fatti)}", f"Da fare {formatta_percentuale(pct_da_fare)}"],
     })
-
+    
     fig = px.bar(
-        df_progress,
-        x="Percentuale",
-        y="Voce",
-        color="Stato",
-        orientation="h",
-        barmode="stack",
+        df_progress, 
+        x="Percentuale", 
+        y="Voce", 
+        color="Stato", 
+        orientation="h", 
+        barmode="stack", 
         text="Etichetta",
-        color_discrete_map=COLORI_RIPARTIZIONE,
-        title="Ripartizione complessiva del lavoro",
+        color_discrete_map=COLORI_RIPARTIZIONE, 
+        title="Ripartizione complessiva", 
         labels={"Percentuale": "", "Voce": "", "Stato": ""},
     )
-
     fig.update_xaxes(
-        range=[0, 100],
-        tickmode="array",
-        tickvals=[0, 20, 40, 60, 80, 100],
-        ticktext=["0%", "20%", "40%", "60%", "80%", "100%"],
+        range=[0, 100], 
+        tickvals=[0, 20, 40, 60, 80, 100], 
+        ticktext=["0%", "20%", "40%", "60%", "80%", "100%"]
     )
-
     fig.update_yaxes(showticklabels=False, title=None)
-
     fig.update_traces(
-        textposition="inside",
-        insidetextanchor="middle",
-        hovertemplate="<b>%{fullData.name}</b><br>%{x:.1f}%<extra></extra>",
+        textposition="inside", 
+        insidetextanchor="middle", 
+        hovertemplate="<b>%{fullData.name}</b><br>%{x:.1f}%<extra></extra>"
     )
-
     fig.update_layout(
-        height=245,
-        margin=dict(l=20, r=20, t=60, b=35),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="left",
-            x=0,
-        ),
-        uniformtext_minsize=10,
-        uniformtext_mode="hide",
+        height=245, 
+        margin=dict(l=20, r=20, t=60, b=35), 
+        legend=dict(orientation="h", y=1.02, x=0), 
+        uniformtext_minsize=10, 
+        uniformtext_mode="hide"
     )
-
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
 
-# ============================================================
-# TABELLA PORTAFOGLIO
-# ============================================================
-
 def tabella_portafoglio(df):
     colonne = ["Progetto", "Team", "SAL", "Stato", "Stato sorgente", "Fatto", "Da fare"]
-
     if "SAL atteso" in df.columns and df["SAL atteso"].notna().any():
         colonne += ["SAL atteso", "Scostamento"]
-
+        
     tabella = df[colonne].copy()
-
     tabella["Fatto"] = tabella["Fatto"].apply(formatta_numero)
     tabella["Da fare"] = tabella["Da fare"].apply(formatta_numero)
 
-    configurazione = {
-        "SAL": st.column_config.ProgressColumn(
-            "SAL", min_value=0, max_value=100, format="%.1f%%"
-        ),
+    config = {
+        "SAL": st.column_config.ProgressColumn("SAL", min_value=0, max_value=100, format="%.1f%%"),
         "Stato sorgente": st.column_config.TextColumn("Stato GANTT"),
         "Fatto": st.column_config.TextColumn("Giorni fatti"),
         "Da fare": st.column_config.TextColumn("Giorni da fare"),
     }
-
     if "SAL atteso" in tabella.columns:
-        configurazione["SAL atteso"] = st.column_config.ProgressColumn(
-            "SAL atteso", min_value=0, max_value=100, format="%.1f%%"
-        )
-        configurazione["Scostamento"] = st.column_config.NumberColumn(
-            "Scostamento (p.p.)", format="%.1f"
-        )
+        config["SAL atteso"] = st.column_config.ProgressColumn("SAL atteso", min_value=0, max_value=100, format="%.1f%%")
+        config["Scostamento"] = st.column_config.NumberColumn("Scostamento (p.p.)", format="%.1f")
+        
+    st.dataframe(tabella, use_container_width=True, hide_index=True, column_config=config)
 
-    st.dataframe(
-        tabella,
-        use_container_width=True,
-        hide_index=True,
-        column_config=configurazione,
-    )
-
-
-# ============================================================
-# CSV
-# ============================================================
 
 def csv_bytes(df):
     return df.to_csv(index=False, sep=";", decimal=",").encode("utf-8-sig")
 
 
+def check_password():
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False
+        
+    if st.session_state["password_correct"]:
+        return True
+
+    st.title("🔒 Accesso riservato")
+    st.caption("Dashboard Monitoraggio SAL MiniPIA")
+    
+    try:
+        pwd_attesa = st.secrets["PASSWORD_TEAM"]
+    except Exception:
+        st.error("PASSWORD_TEAM non configurata.")
+        return False
+
+    pwd = st.text_input("Inserisci password", type="password")
+    if st.button("Accedi", type="primary", use_container_width=True):
+        if pwd == pwd_attesa:
+            st.session_state["password_correct"] = True
+            st.rerun()
+        else:
+            st.error("Password errata.")
+    return False
+
+
 # ============================================================
-# AVVIO APP
+# CARICAMENTO DATI EXCEL
+# ============================================================
+
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
+def carica_workbook(sheet_id):
+    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+    req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urlopen(req, timeout=60) as response:
+        contenuto = response.read()
+    fogli = {nome: pulisci_dataframe(df) for nome, df in pd.read_excel(BytesIO(contenuto), sheet_name=None, engine="openpyxl").items()}
+    return (fogli, ora_italiana())
+
+
+# ============================================================
+# APP STREAMLIT (LOGICA PRINCIPALE E UI)
 # ============================================================
 
 if not check_password():
     st.stop()
 
-
-# ============================================================
-# HEADER
-# ============================================================
-
 header_left, header_right = st.columns([6, 1])
-
 with header_left:
     st.title("📊 Dashboard Monitoraggio SAL MiniPIA")
-    st.markdown(
-        """
-        <div class="dashboard-subtitle">
-        Portafoglio progetti · EPAL · MGIO
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
+    st.markdown('<div class="dashboard-subtitle">Portafoglio progetti · EPAL · MGIO</div>', unsafe_allow_html=True)
 with header_right:
     if st.button("Esci", use_container_width=True):
         st.session_state["password_correct"] = False
         st.rerun()
 
-
-# ============================================================
-# CARICAMENTO GOOGLE SHEETS
-# ============================================================
-
 try:
-    with st.spinner("Caricamento dati dal Dashboard..."):
-        (fogli, timestamp_caricamento) = carica_workbook(SHEET_ID)
+    with st.spinner("Caricamento dati in corso..."):
+        fogli, timestamp_caricamento = carica_workbook(SHEET_ID)
 except Exception as exc:
-    st.error("Impossibile caricare il Dashboard Google Sheets.")
+    st.error("Errore caricamento da Google Sheets.")
     st.exception(exc)
     st.stop()
 
 sheet_names = list(fogli.keys())
-gantt_combinato_nome = trova_gantt_combinato(sheet_names)
+gantt_combinato = next((n for n in GANTT_COMBINATI_POSSIBILI if n in sheet_names), None)
 
-st.caption(
-    f"● Dati caricati dall'app: {timestamp_caricamento.strftime('%d/%m/%Y - %H:%M')} "
-    f"· Cache {CACHE_TTL_SECONDS // 60} min"
-)
-
-
-# ============================================================
-# SIDEBAR
-# ============================================================
+st.caption(f"● Dati live: {timestamp_caricamento.strftime('%d/%m/%Y %H:%M')} · Cache {CACHE_TTL_SECONDS//60} min")
 
 st.sidebar.title("Controlli")
-
 if st.sidebar.button("🔄 Aggiorna dati", use_container_width=True):
     st.cache_data.clear()
     st.rerun()
-
-vista = st.sidebar.radio(
-    "Vista",
-    ["Executive", "Avanzamento", "Dettaglio progetto", "Dati sorgente"],
-)
+    
+vista = st.sidebar.radio("Vista", ["Executive", "Avanzamento", "Dettaglio progetto", "Dati sorgente"])
 
 
 # ============================================================
-# PORTAFOGLIO EPAL E MGIO
+# COSTRUZIONE PORTAFOGLIO
 # ============================================================
 
-portfolio_epal = (
-    costruisci_portafoglio(fogli[GANTT_EPAL], "EPAL", GANTT_EPAL)
-    if GANTT_EPAL in fogli
-    else pd.DataFrame()
-)
+if GANTT_EPAL in fogli:
+    portfolio_epal = costruisci_portafoglio(fogli[GANTT_EPAL], "EPAL", GANTT_EPAL)
+else:
+    portfolio_epal = pd.DataFrame()
+    
+if GANTT_MGIO in fogli:
+    portfolio_mgio = costruisci_portafoglio(fogli[GANTT_MGIO], "MGIO", GANTT_MGIO)
+else:
+    portfolio_mgio = pd.DataFrame()
 
-portfolio_mgio = (
-    costruisci_portafoglio(fogli[GANTT_MGIO], "MGIO", GANTT_MGIO)
-    if GANTT_MGIO in fogli
-    else pd.DataFrame()
-)
+# Integrazione MINDS per calcolo automatico dei Giorni Fatti / Totali
+metriche_minds = calcola_metriche_minds(fogli)
+portfolio_epal = arricchisci_portafoglio_minds(portfolio_epal, metriche_minds)
+portfolio_mgio = arricchisci_portafoglio_minds(portfolio_mgio, metriche_minds)
 
-portfolio_epal = arricchisci_portafoglio_con_giorni_sal(portfolio_epal, fogli, sheet_names)
-portfolio_mgio = arricchisci_portafoglio_con_giorni_sal(portfolio_mgio, fogli, sheet_names)
-
+portfolio_epal = arricchisci_portafoglio_con_giorni_sal_dettaglio(portfolio_epal, fogli, sheet_names)
+portfolio_mgio = arricchisci_portafoglio_con_giorni_sal_dettaglio(portfolio_mgio, fogli, sheet_names)
 portfolio_concat = pd.concat([portfolio_epal, portfolio_mgio], ignore_index=True)
 
+if gantt_combinato:
+    portfolio_base = costruisci_portafoglio_combinato(fogli[gantt_combinato], portfolio_epal, portfolio_mgio, gantt_combinato)
+else:
+    portfolio_base = portfolio_concat.copy()
 
-# ============================================================
-# GANTT COMBINATO
-# ============================================================
-
-portfolio_da_gantt_combinato = (
-    costruisci_portafoglio_combinato(
-        fogli[gantt_combinato_nome],
-        portfolio_epal,
-        portfolio_mgio,
-        gantt_combinato_nome,
-    )
-    if gantt_combinato_nome is not None
-    else pd.DataFrame()
-)
-
-
-# ============================================================
-# PORTAFOGLIO TUTTI - EPAL+MGIO
-# ============================================================
-
-portfolio_base_tutti = (
-    portfolio_da_gantt_combinato.copy()
-    if not portfolio_da_gantt_combinato.empty
-    else portfolio_concat.copy()
-)
-
-portfolio_tutti = consolida_progetti_univoci(portfolio_base_tutti)
+portfolio_tutti = consolida_progetti_univoci(portfolio_base)
 portfolio_tutti = aggiungi_flag_condiviso(portfolio_tutti, portfolio_epal, portfolio_mgio)
-portfolio_tutti = arricchisci_portafoglio_con_giorni_sal(portfolio_tutti, fogli, sheet_names)
-
-
-# ============================================================
-# SCELTA PORTAFOGLIO
-# ============================================================
+portfolio_tutti = arricchisci_portafoglio_con_giorni_sal_dettaglio(portfolio_tutti, fogli, sheet_names)
 
 scope_options = ["Tutti - EPAL+MGIO", "EPAL", "MGIO"]
 if not portfolio_tutti.empty and (portfolio_tutti["Team"] == "EPAL+MGIO").any():
     scope_options.append("EPAL+MGIO")
-
+    
 scope = st.sidebar.radio("Portfolio", scope_options)
 
 if scope == "EPAL":
@@ -2004,380 +1672,182 @@ elif scope == "EPAL+MGIO":
 else:
     portfolio = portfolio_tutti.copy()
 
-
-# ============================================================
-# FILTRI
-# ============================================================
-
 portfolio_filtrato = portfolio.copy()
 
 if vista != "Dati sorgente" and not portfolio.empty:
     st.sidebar.markdown("---")
     st.sidebar.subheader("Filtri")
-
     ricerca = st.sidebar.text_input("🔎 Cerca progetto", key=f"ricerca_{scope}")
     filtro_stato = st.sidebar.selectbox(
-        "Stato",
-        ["Tutti", "In stato iniziale", "In stato intermedio", "In stato avanzato", "Completato"],
-        key=f"stato_{scope}",
+        "Stato", 
+        ["Tutti", "In stato iniziale", "In stato intermedio", "In stato avanzato", "Completato"], 
+        key=f"stato_{scope}"
     )
-    range_sal = st.sidebar.slider(
-        "Intervallo SAL",
-        min_value=0,
-        max_value=100,
-        value=(0, 100),
-        step=1,
-        key=f"range_sal_{scope}",
-    )
+    range_sal = st.sidebar.slider("SAL", 0, 100, (0, 100), 1, key=f"range_{scope}")
 
     if ricerca.strip():
-        portfolio_filtrato = portfolio_filtrato[
-            portfolio_filtrato["Progetto"]
-            .astype(str)
-            .str.contains(ricerca.strip(), case=False, na=False)
-        ]
-
+        portfolio_filtrato = portfolio_filtrato[portfolio_filtrato["Progetto"].astype(str).str.contains(ricerca.strip(), case=False, na=False)]
     if filtro_stato != "Tutti":
         portfolio_filtrato = portfolio_filtrato[portfolio_filtrato["Stato"] == filtro_stato]
-
-    portfolio_filtrato = portfolio_filtrato[
-        portfolio_filtrato["SAL"].between(range_sal[0], range_sal[1], inclusive="both")
-    ]
+        
+    portfolio_filtrato = portfolio_filtrato[portfolio_filtrato["SAL"].between(range_sal[0], range_sal[1], inclusive="both")]
 
 
 # ============================================================
-# VISTA EXECUTIVE
+# RENDERING VISTE
 # ============================================================
 
 if vista == "Executive":
     if portfolio_filtrato.empty:
-        st.info("Nessun progetto corrisponde ai filtri selezionati.")
+        st.info("Nessun progetto.")
         st.stop()
-
-    portfolio_in_corso = portfolio_filtrato[portfolio_filtrato["Stato"] != "Completato"].copy()
-    sal_progetti_in_corso, metodo_sal = portfolio_sal(portfolio_in_corso)
-
-    totale_progetti = len(portfolio_filtrato)
-    completati = int((portfolio_filtrato["Stato"] == "Completato").sum())
-    stato_iniziale = int((portfolio_filtrato["Stato"] == "In stato iniziale").sum())
-    stato_intermedio = int((portfolio_filtrato["Stato"] == "In stato intermedio").sum())
-    stato_avanzato = int((portfolio_filtrato["Stato"] == "In stato avanzato").sum())
-    anomalie = int(portfolio_filtrato["Anomalia SAL"].sum())
+        
+    port_in_corso = portfolio_filtrato[portfolio_filtrato["Stato"] != "Completato"]
+    sal_in_corso, metodo_sal = portfolio_sal(port_in_corso)
 
     st.subheader(f"Portfolio · {scope}")
-
     k1, k2, k3, k4, k5, k6 = st.columns(6)
-    k1.metric("Progetti", totale_progetti)
-    k2.metric("SAL progetti in corso", formatta_percentuale(sal_progetti_in_corso))
-    k3.metric("Completati", completati)
-    k4.metric("In stato iniziale", stato_iniziale)
-    k5.metric("In stato intermedio", stato_intermedio)
-    k6.metric("In stato avanzato", stato_avanzato)
+    k1.metric("Progetti", len(portfolio_filtrato))
+    k2.metric("SAL in corso", formatta_percentuale(sal_in_corso))
+    k3.metric("Completati", int((portfolio_filtrato["Stato"] == "Completato").sum()))
+    k4.metric("Iniziale", int((portfolio_filtrato["Stato"] == "In stato iniziale").sum()))
+    k5.metric("Intermedio", int((portfolio_filtrato["Stato"] == "In stato intermedio").sum()))
+    k6.metric("Avanzato", int((portfolio_filtrato["Stato"] == "In stato avanzato").sum()))
+    st.caption(f"Calcolo: {metodo_sal}")
 
-    st.caption(f"Metodo SAL progetti in corso: {metodo_sal}.")
+    ord_exec = st.radio("Ordinamento", ["SAL crescente", "SAL decrescente", "Nome progetto"], index=1, horizontal=True)
+    port_ord = ordina_portafoglio(portfolio_filtrato, ord_exec)
+    grafico_ranking(portfolio_filtrato, "Avanzamento progetti", ord_exec)
 
-    if anomalie > 0:
-        st.warning(
-            f"Rilevati {anomalie} valori SAL fuori dall'intervallo 0–100%. "
-            "Nei grafici la barra viene limitata a 0–100%, mentre il valore sorgente rimane disponibile."
-        )
-        with st.expander("Visualizza anomalie SAL"):
-            anomalie_df = portfolio_filtrato[portfolio_filtrato["Anomalia SAL"]][
-                ["Progetto", "Team", "SAL sorgente", "SAL", "Stato", "Stato sorgente"]
-            ].copy()
-            anomalie_df["SAL sorgente"] = anomalie_df["SAL sorgente"].apply(
-                lambda x: formatta_percentuale(x, 2)
-            )
-            anomalie_df["SAL"] = anomalie_df["SAL"].apply(formatta_percentuale)
-            st.dataframe(anomalie_df, use_container_width=True, hide_index=True)
-
-    ordinamento_executive = st.radio(
-        "Ordinamento",
-        ["SAL crescente", "SAL decrescente", "Nome progetto"],
-        index=1,
-        horizontal=True,
-        key=f"ordinamento_executive_{scope}",
-    )
-
-    portfolio_executive_ordinato = ordina_portafoglio(
-        portfolio_filtrato,
-        ordinamento_executive
-    )
-
-    grafico_ranking(
-        portfolio_filtrato,
-        "Avanzamento dei progetti",
-        ordinamento=ordinamento_executive
-    )
-
-    col_left, col_right = st.columns(2)
-
-    with col_left:
+    col1, col2 = st.columns(2)
+    with col1:
         grafico_distribuzione_stati(portfolio_filtrato)
-
-    with col_right:
+    with col2:
         if scope == "Tutti - EPAL+MGIO":
             grafico_confronto_team(portfolio_filtrato)
         else:
-            fatto = portfolio_in_corso["Fatto"].dropna().sum()
-            residuo = portfolio_in_corso["Da fare"].dropna().sum()
-
-            if fatto > 0 or residuo > 0:
-                carico = pd.DataFrame({
-                    "Voce": ["Giorni fatti", "Giorni da fare"],
-                    "Giorni": [fatto, residuo],
-                })
+            f = port_in_corso["Fatto"].dropna().sum()
+            r = port_in_corso["Da fare"].dropna().sum()
+            if f > 0 or r > 0:
                 fig = px.bar(
-                    carico,
-                    x="Giorni",
-                    y="Voce",
-                    orientation="h",
-                    title="Carico di lavoro dei progetti in corso",
-                    text="Giorni",
+                    pd.DataFrame({"Voce": ["Fatto", "Da fare"], "Giorni": [f, r]}), 
+                    x="Giorni", y="Voce", orientation="h", title="Carico di lavoro", text="Giorni"
                 )
                 fig.update_traces(texttemplate="%{text:.1f}", textposition="outside")
-                fig.update_layout(
-                    height=390,
-                    margin=dict(l=20, r=55, t=60, b=40),
-                    showlegend=False
-                )
+                fig.update_layout(height=390, showlegend=False)
                 st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
             else:
-                st.info("I giorni fatti / da fare non sono disponibili per questo portafoglio.")
+                st.info("Giorni non disponibili.")
 
-    # PRIORITÀ OPERATIVE
-    priorita = (
-        portfolio_filtrato[
-            portfolio_filtrato["Stato"].isin(
-                ["In stato iniziale", "In stato intermedio"]
-            )
-        ]
-        .sort_values(["SAL", "Progetto"])
-        .head(10)
-    )
-
+    priorita = portfolio_filtrato[portfolio_filtrato["Stato"].isin(["In stato iniziale", "In stato intermedio"])].sort_values(["SAL", "Progetto"]).head(10)
     if not priorita.empty:
         st.markdown("---")
         st.subheader("Priorità operative")
-
-        priorita_tabella = priorita[
-            ["Progetto", "Team", "SAL", "Stato", "Fatto", "Da fare"]
-        ].copy()
-
-        priorita_tabella["Fatto"] = priorita_tabella["Fatto"].apply(formatta_numero)
-        priorita_tabella["Da fare"] = priorita_tabella["Da fare"].apply(formatta_numero)
-
-        st.dataframe(
-            priorita_tabella,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "SAL": st.column_config.ProgressColumn(
-                    "SAL",
-                    min_value=0,
-                    max_value=100,
-                    format="%.1f%%"
-                ),
-                "Fatto": st.column_config.TextColumn("Giorni fatti"),
-                "Da fare": st.column_config.TextColumn("Giorni da fare"),
-            },
-        )
+        tabella_portafoglio(priorita)
 
     if "SAL atteso" in portfolio_filtrato.columns and portfolio_filtrato["SAL atteso"].notna().any():
         st.markdown("---")
-        grafico_reale_atteso(portfolio_executive_ordinato)
+        grafico_reale_atteso(port_ord)
 
     st.markdown("---")
     st.subheader("Portafoglio progetti")
+    tabella_portafoglio(port_ord)
+    st.download_button("⬇️ Scarica CSV", data=csv_bytes(port_ord), file_name=f"portfolio_{scope}.csv", mime="text/csv")
 
-    tabella_portafoglio(portfolio_executive_ordinato)
-
-    st.download_button(
-        "⬇️ Scarica portafoglio filtrato in CSV",
-        data=csv_bytes(portfolio_executive_ordinato),
-        file_name=f"portfolio_sal_{scope.lower().replace(' ', '_').replace('+', 'piu')}.csv",
-        mime="text/csv",
-    )
-
-
-# ============================================================
-# VISTA AVANZAMENTO
-# ============================================================
 
 elif vista == "Avanzamento":
     if portfolio_filtrato.empty:
-        st.info("Nessun progetto corrisponde ai filtri selezionati.")
+        st.info("Nessun progetto.")
         st.stop()
-
-    st.subheader(f"Analisi avanzamento · {scope}")
-
-    ordinamento = st.radio(
-        "Ordinamento",
-        ["SAL crescente", "SAL decrescente", "Nome progetto"],
-        index=1,
-        horizontal=True,
-        key=f"ordinamento_avanzamento_{scope}",
-    )
-
-    avanzamento_ordinato = ordina_portafoglio(portfolio_filtrato, ordinamento)
-
-    grafico_ranking(portfolio_filtrato, "Ranking SAL", ordinamento=ordinamento)
-
+        
+    st.subheader(f"Avanzamento · {scope}")
+    ord_avanz = st.radio("Ordinamento", ["SAL crescente", "SAL decrescente", "Nome progetto"], index=1, horizontal=True)
+    port_ord = ordina_portafoglio(portfolio_filtrato, ord_avanz)
+    grafico_ranking(portfolio_filtrato, "Ranking SAL", ord_avanz)
     st.markdown("---")
-    tabella_portafoglio(avanzamento_ordinato)
-
+    tabella_portafoglio(port_ord)
+    
     if "SAL atteso" in portfolio_filtrato.columns and portfolio_filtrato["SAL atteso"].notna().any():
         st.markdown("---")
-        grafico_reale_atteso(avanzamento_ordinato)
+        grafico_reale_atteso(port_ord)
 
-
-# ============================================================
-# VISTA DETTAGLIO PROGETTO
-# ============================================================
 
 elif vista == "Dettaglio progetto":
     if portfolio.empty:
-        st.info("Nessun progetto disponibile.")
+        st.info("Nessun progetto.")
         st.stop()
+        
+    opts = portfolio[["Progetto", "Team"]].drop_duplicates().sort_values(["Progetto", "Team"]).copy()
+    opts["Label"] = opts["Progetto"] + " · " + opts["Team"]
+    
+    scelta = st.selectbox("Seleziona", opts["Label"].tolist())
+    riga = opts[opts["Label"] == scelta].iloc[0]
+    prog, team = riga["Progetto"], riga["Team"]
+    riepilogo = portfolio[(portfolio["Progetto"] == prog) & (portfolio["Team"] == team)].iloc[0]
 
-    options = (
-        portfolio[["Progetto", "Team"]]
-        .drop_duplicates()
-        .sort_values(["Progetto", "Team"])
-        .copy()
-    )
+    foglio_auto, _ = trova_foglio_sal_migliore(prog, team, sheet_names)
+    candidati = lista_fogli_sal(sheet_names, team) or lista_fogli_sal(sheet_names, None)
 
-    options["Label"] = options["Progetto"] + " · " + options["Team"]
-
-    scelta = st.selectbox("Seleziona il progetto", options["Label"].tolist())
-    riga_scelta = options[options["Label"] == scelta].iloc[0]
-
-    progetto = riga_scelta["Progetto"]
-    team = riga_scelta["Team"]
-
-    righe_progetto = portfolio[
-        (portfolio["Progetto"] == progetto) & (portfolio["Team"] == team)
-    ]
-
-    if righe_progetto.empty:
-        st.warning("Dati del progetto non disponibili.")
-        st.stop()
-
-    riepilogo = righe_progetto.iloc[0]
-
-    foglio_auto, score = trova_foglio_sal_migliore(progetto, team, sheet_names)
-    candidati_sal = lista_fogli_sal(sheet_names, team) or lista_fogli_sal(sheet_names, None)
-
-    st.subheader(progetto)
+    st.subheader(prog)
     st.caption(f"Team: {team}")
-
-    if not candidati_sal:
-        st.warning("Non è stato individuato alcun foglio SAL compatibile.")
+    
+    if not candidati:
+        st.warning("Foglio SAL non trovato.")
         st.stop()
-
-    default_idx = (
-        candidati_sal.index(foglio_auto)
-        if (foglio_auto is not None and foglio_auto in candidati_sal)
-        else 0
-    )
 
     foglio_sal = st.selectbox(
-        "Foglio SAL associato",
-        candidati_sal,
-        index=default_idx,
-        help="La dashboard associa automaticamente il foglio SAL più compatibile.",
+        "Foglio SAL", 
+        candidati, 
+        index=candidati.index(foglio_auto) if foglio_auto in candidati else 0
     )
-
     df_sal = fogli[foglio_sal]
-    riepilogo_giorni = calcola_giorni_progetto(df_sal, foglio_sal)
 
-    if not riepilogo_giorni["disponibile"]:
-        fallback_gantt = calcola_giorni_da_gantt(riepilogo["Fatto"], riepilogo["Da fare"])
-        if fallback_gantt is not None:
-            riepilogo_giorni = fallback_gantt
+    riep_gg = calcola_giorni_progetto(df_sal, foglio_sal)
+    if not riep_gg["disponibile"]:
+        fb = calcola_giorni_da_gantt(riepilogo["Fatto"], riepilogo["Da fare"])
+        if fb:
+            riep_gg = fb
 
-    sal_gantt = riepilogo["SAL"]
-    sal_visualizzato = (
-        riepilogo_giorni["pct_fatti"]
-        if pd.isna(sal_gantt) and riepilogo_giorni["disponibile"]
-        else sal_gantt
-    )
+    if pd.isna(riepilogo["SAL"]) and riep_gg["disponibile"]:
+        sal_vis = riep_gg["pct_fatti"]
+    else:
+        sal_vis = riepilogo["SAL"]
 
     p1, p2, p3, p4 = st.columns(4)
-    p1.metric("SAL progetto", formatta_percentuale(sal_visualizzato))
-    p2.metric("Giorni fatti", formatta_numero(riepilogo_giorni["giorni_fatti"]))
-    p3.metric("Giorni da fare", formatta_numero(riepilogo_giorni["giorni_da_fare"]))
+    p1.metric("SAL", formatta_percentuale(sal_vis))
+    p2.metric("Fatti", formatta_numero(riep_gg["giorni_fatti"]))
+    p3.metric("Da fare", formatta_numero(riep_gg["giorni_da_fare"]))
     p4.metric("Stato", riepilogo["Stato"])
 
-    q1, q2 = st.columns(2)
-    q1.metric(
-        "✅ Percentuale complessiva giorni fatti",
-        formatta_percentuale(riepilogo_giorni["pct_fatti"])
-    )
-    q2.metric(
-        "⏳ Percentuale complessiva giorni da fare",
-        formatta_percentuale(riepilogo_giorni["pct_da_fare"])
-    )
+    if riep_gg["disponibile"]:
+        grafico_ripartizione_lavoro(riep_gg["pct_fatti"], riep_gg["pct_da_fare"])
 
-    if riepilogo_giorni["disponibile"]:
-        grafico_ripartizione_lavoro(
-            riepilogo_giorni["pct_fatti"],
-            riepilogo_giorni["pct_da_fare"]
-        )
-
-    attivita = costruisci_attivita(df_sal, foglio_sal)
-
-    if not attivita.empty:
+    att = costruisci_attivita(df_sal, foglio_sal)
+    if not att.empty:
         st.markdown("---")
-        grafico_attivita(attivita, progetto)
-
+        grafico_attivita(att, prog)
         st.subheader("Dettaglio attività")
-        tab_attivita = attivita[["Attività", "SAL", "Stato", "Fatto", "Da fare"]].copy()
-
         st.dataframe(
-            tab_attivita,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "SAL": st.column_config.ProgressColumn(
-                    "SAL", min_value=0, max_value=100, format="%.1f%%"
-                ),
-                "Fatto": st.column_config.NumberColumn("Giorni fatti", format="%.1f"),
-                "Da fare": st.column_config.NumberColumn("Giorni da fare", format="%.1f"),
-            },
+            att[["Attività", "SAL", "Stato", "Fatto", "Da fare"]], 
+            use_container_width=True, 
+            hide_index=True, 
+            column_config={"SAL": st.column_config.ProgressColumn(format="%.1f%%")}
         )
-
-    with st.expander("Visualizza dati sorgente del foglio SAL"):
+        
+    with st.expander("Sorgente SAL"):
         st.dataframe(df_sal, use_container_width=True)
 
 
-# ============================================================
-# VISTA DATI SORGENTE
-# ============================================================
-
 elif vista == "Dati sorgente":
     st.subheader("Dati sorgente")
-
-    preferiti = []
-    if gantt_combinato_nome is not None:
-        preferiti.append(gantt_combinato_nome)
-
-    for nome in [GANTT_EPAL, GANTT_MGIO]:
-        if nome in sheet_names:
-            preferiti.append(nome)
-
-    altri = [nome for nome in sheet_names if nome not in preferiti]
-    elenco = preferiti + altri
-
-    foglio_raw = st.selectbox("Foglio da visualizzare", elenco)
-    df_raw = fogli[foglio_raw]
-
+    f_raw = st.selectbox("Foglio", list(fogli.keys()))
+    df_raw = fogli[f_raw]
+    
     st.caption(f"{len(df_raw)} righe · {len(df_raw.columns)} colonne")
     st.dataframe(df_raw, use_container_width=True)
-
     st.download_button(
-        "⬇️ Scarica foglio in CSV",
-        data=csv_bytes(df_raw),
-        file_name=f"{re.sub(r'[^A-Za-z0-9_-]+', '_', foglio_raw)}.csv",
-        mime="text/csv",
+        "⬇️ CSV", 
+        csv_bytes(df_raw), 
+        f"{re.sub(r'[^A-Za-z0-9_-]+', '_', f_raw)}.csv", 
+        "text/csv"
     )
