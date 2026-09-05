@@ -337,7 +337,7 @@ def team_da_insieme(teams):
     teams = {team for team in teams if team and team != "N/D"}
     if "EPAL+MGIO" in teams or ("EPAL" in teams and "MGIO" in teams):
         return "EPAL+MGIO"
-    if "EPAL" in teams:
+    if "EPAL":
         return "EPAL"
     if "MGIO" in teams:
         return "MGIO"
@@ -418,14 +418,14 @@ def trova_colonna_attivita(df):
 def trova_colonna_sal(df):
     col = trova_colonna(
         df,
-        exact=["% COMPLETAMENTO", "PERCENTUALE COMPLETAMENTO", "COMPLETAMENTO", "SAL", "% SAL"],
+        exact=["% COMPLETAMENTO", "PERCENTUALE COMPLETAMENTO", "COMPLETAMENTO", "SAL", "% SAL", "SAL %"],
     )
     if col is not None:
         return col
 
     col = trova_colonna(
         df,
-        contains_any=["completamento", "percentuale", "% sal"],
+        contains_any=["completamento", "percentuale", "% sal", "sal %"],
         exclude=["atteso", "previsto", "target", "pianificato", "rosso", "giallo", "verde"],
     )
     if col is not None:
@@ -442,7 +442,7 @@ def trova_colonna_fatto(df):
     col = trova_colonna(
         df,
         exact=[
-            "FATTO (GIORNI)", "FATTO", "GIORNI FATTI", "GIORNI EFFETTUATI",
+            "GIORNI FATTI", "FATTO (GIORNI)", "FATTO", "GIORNI EFFETTUATI",
             "GIORNI FATTO", "GG FATTI", "GG FATTO", "GIORNI UOMO FATTI", "FATTI", "GIORNI FATTO (GG)"
         ],
         contains_any=["fatto", "fatti", "effettuati", "svolti"],
@@ -457,7 +457,7 @@ def trova_colonna_da_fare(df):
     col = trova_colonna(
         df,
         exact=[
-            "DA FARE (GIORNI)", "DA FARE", "GIORNI DA FARE",
+            "GIORNI DA FARE", "DA FARE (GIORNI)", "DA FARE",
             "GIORNI RESIDUI", "RESIDUO", "RESIDUI", "GG DA FARE",
             "GG RESIDUI", "GIORNI RIMANENTI", "RIMANENTI",
             "TOT GIORNI RESIDUI", "TOT ORE RESIDUE"
@@ -652,61 +652,41 @@ def lista_fogli_sal(sheet_names, team=None):
 
 
 # ============================================================
-# ESTREZIONE METRICHE MINDS_SAL / MINDS_TASK
+# ESTREZIONE METRICHE DAL FOGLIO UNIFICATO MINDS_RIEPILOGO
 # ============================================================
 
 def calcola_metriche_minds(fogli):
-    if "MINDS_SAL" not in fogli or "MINDS_task" not in fogli:
+    if "MINDS_RIEPILOGO" not in fogli:
         return {}
 
-    df_sal = fogli["MINDS_SAL"]
-    df_task = fogli["MINDS_task"]
+    df_riep = fogli["MINDS_RIEPILOGO"]
+    col_proj = trova_colonna_progetto(df_riep)
+    col_team = trova_colonna_team(df_riep)
+    col_gt = trova_colonna(df_riep, exact=["GIORNI TOTALI"])
+    col_gf = trova_colonna(df_riep, exact=["GIORNI FATTI"])
+    col_gdf = trova_colonna(df_riep, exact=["GIORNI DA FARE"])
 
-    col_proj_sal = trova_colonna_progetto(df_sal)
-    col_res_sal = trova_colonna_da_fare(df_sal)
-    col_team_sal = trova_colonna_team(df_sal)
-
-    col_proj_task = trova_colonna_progetto(df_task)
-    col_ore_task = trova_colonna_lavoro_totale_ore(df_task)
-    col_team_task = trova_colonna_team(df_task)
-
-    if not col_proj_sal or not col_res_sal or not col_proj_task or not col_ore_task:
+    if not col_proj:
         return {}
-
-    ore_totali_mappa = {}
-    for _, row in df_task.iterrows():
-        p_key = chiave_progetto(row[col_proj_task])
-        if not p_key:
-            continue
-        t_key = normalizza_team(row[col_team_task]) if col_team_task and pd.notna(row[col_team_task]) else "N/D"
-        val_ore = serie_numerica(pd.Series([row[col_ore_task]])).iloc[0]
-        if pd.notna(val_ore):
-            combo_key = (p_key, t_key)
-            ore_totali_mappa[combo_key] = ore_totali_mappa.get(combo_key, 0.0) + float(val_ore)
-            ore_totali_mappa[p_key] = ore_totali_mappa.get(p_key, 0.0) + float(val_ore)
 
     metriche_minds = {}
-    for _, row in df_sal.iterrows():
-        p_key = chiave_progetto(row[col_proj_sal])
+    for _, row in df_riep.iterrows():
+        p_key = chiave_progetto(row[col_proj])
         if not p_key:
             continue
-        t_key = normalizza_team(row[col_team_sal]) if col_team_sal and pd.notna(row[col_team_sal]) else "N/D"
+        t_key = normalizza_team(row[col_team]) if col_team and pd.notna(row[col_team]) else "N/D"
 
-        residuo = serie_numerica(pd.Series([row[col_res_sal]])).iloc[0]
-        ore_tot = ore_totali_mappa.get((p_key, t_key), ore_totali_mappa.get(p_key, float("nan")))
+        gt = serie_numerica(pd.Series([row[col_gt]])).iloc[0] if col_gt else float("nan")
+        gf = serie_numerica(pd.Series([row[col_gf]])).iloc[0] if col_gf else float("nan")
+        gdf = serie_numerica(pd.Series([row[col_gdf]])).iloc[0] if col_gdf else float("nan")
 
-        if pd.notna(ore_tot):
-            giorni_totali = ore_tot / 8.0
-            giorni_da_fare = float(residuo) if pd.notna(residuo) else 0.0
-            giorni_fatti = max(0.0, giorni_totali - giorni_da_fare)
-
-            item = {
-                "giorni_totali": giorni_totali,
-                "giorni_da_fare": giorni_da_fare,
-                "giorni_fatti": giorni_fatti,
-            }
-            metriche_minds[(p_key, t_key)] = item
-            metriche_minds[p_key] = item
+        item = {
+            "giorni_totali": gt,
+            "giorni_fatti": gf,
+            "giorni_da_fare": gdf,
+        }
+        metriche_minds[(p_key, t_key)] = item
+        metriche_minds[p_key] = item
 
     return metriche_minds
 
@@ -726,7 +706,7 @@ def arricchisci_portafoglio_minds(df_portfolio, metriche_minds):
             out.at[idx, "Da fare"] = m["giorni_da_fare"]
 
             tot = m["giorni_totali"]
-            if tot > 0:
+            if pd.notna(tot) and tot > 0 and pd.notna(m["giorni_fatti"]):
                 sal_calc = (m["giorni_fatti"] / tot) * 100.0
                 out.at[idx, "SAL sorgente"] = sal_calc
                 out.at[idx, "SAL"] = min(max(sal_calc, 0.0), 100.0)
@@ -1192,6 +1172,7 @@ def arricchisci_portafoglio_con_giorni_sal_dettaglio(df, fogli, sheet_names):
         orig_f = out.at[idx, "Fatto"] if "Fatto" in out.columns else float("nan")
         orig_d = out.at[idx, "Da fare"] if "Da fare" in out.columns else float("nan")
 
+        # Se il dato e gia stato letto dal foglio MINDS_RIEPILOGO, lo protegge e non lo sovrascrive
         if pd.notna(orig_f) and pd.notna(orig_d):
             continue
 
@@ -1809,11 +1790,27 @@ elif vista == "Dettaglio progetto":
     )
     df_sal = fogli[foglio_sal]
 
-    riep_gg = calcola_giorni_progetto(df_sal, foglio_sal)
-    if not riep_gg["disponibile"]:
-        fb = calcola_giorni_da_gantt(riepilogo["Fatto"], riepilogo["Da fare"])
-        if fb:
-            riep_gg = fb
+    # Allinea esattamente i contatori alle metriche ufficiali del portafoglio se gia disponibili
+    if pd.notna(riepilogo.get("Fatto")) and pd.notna(riepilogo.get("Da fare")):
+        f_minds = float(riepilogo["Fatto"])
+        d_minds = float(riepilogo["Da fare"])
+        tot_minds = f_minds + d_minds
+        pct_f = (f_minds / tot_minds * 100) if tot_minds > 0 else 0.0
+        pct_d = (d_minds / tot_minds * 100) if tot_minds > 0 else 0.0
+        riep_gg = {
+            "disponibile": True,
+            "giorni_fatti": f_minds,
+            "giorni_da_fare": d_minds,
+            "giorni_totali": tot_minds,
+            "pct_fatti": pct_f,
+            "pct_da_fare": pct_d,
+        }
+    else:
+        riep_gg = calcola_giorni_progetto(df_sal, foglio_sal)
+        if not riep_gg["disponibile"]:
+            fb = calcola_giorni_da_gantt(riepilogo["Fatto"], riepilogo["Da fare"])
+            if fb:
+                riep_gg = fb
 
     if pd.isna(riepilogo["SAL"]) and riep_gg["disponibile"]:
         sal_vis = riep_gg["pct_fatti"]
