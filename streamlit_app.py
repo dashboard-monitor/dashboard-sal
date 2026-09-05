@@ -340,7 +340,7 @@ def team_da_insieme(teams):
 
 
 # ============================================================
-# RICONOSCIMENTO COLONNE
+# RICONOSCIMENTO COLONNE E FOGLI
 # ============================================================
 
 def trova_colonna(df, exact=None, contains_all=None, contains_any=None, exclude=None):
@@ -520,92 +520,6 @@ def trova_colonne_giorni_sal(df, nome_foglio):
     return (col_fatto, col_da_fare, "intestazioni disponibili")
 
 
-# ============================================================
-# ESTREZIONE METRICHE MINDS_SAL / MINDS_TASK
-# ============================================================
-
-def calcola_metriche_minds(fogli):
-    """
-    Legge MINDS_SAL e MINDS_task dalla Dashboard intermedia:
-    - Giorni Totali = TOT ore / 8
-    - Giorni Fatti = Giorni Totali - Giorni Residui
-    """
-    if "MINDS_SAL" not in fogli or "MINDS_task" not in fogli:
-        return {}
-
-    df_sal = fogli["MINDS_SAL"]
-    df_task = fogli["MINDS_task"]
-
-    col_proj_sal = trova_colonna_progetto(df_sal)
-    col_res = trova_colonna_da_fare(df_sal)
-
-    col_proj_task = trova_colonna_progetto(df_task)
-    col_ore = trova_colonna_lavoro_totale_ore(df_task)
-
-    if not col_proj_sal or not col_res or not col_proj_task or not col_ore:
-        return {}
-
-    # Mappatura ore totali da MINDS_task
-    ore_totali_mappa = {}
-    for _, row in df_task.iterrows():
-        key = chiave_progetto(row[col_proj_task])
-        if key:
-            val_ore = serie_numerica(pd.Series([row[col_ore]])).iloc[0]
-            if pd.notna(val_ore):
-                ore_totali_mappa[key] = ore_totali_mappa.get(key, 0.0) + float(val_ore)
-
-    # Calcolo dei Giorni Fatti = Totali (ore/8) - Residui
-    metriche_minds = {}
-    for _, row in df_sal.iterrows():
-        key = chiave_progetto(row[col_proj_sal])
-        if not key:
-            continue
-
-        residuo = serie_numerica(pd.Series([row[col_res]])).iloc[0]
-        ore_tot = ore_totali_mappa.get(key, float("nan"))
-
-        if pd.notna(ore_tot):
-            giorni_totali = ore_tot / 8.0
-            giorni_da_fare = float(residuo) if pd.notna(residuo) else 0.0
-            giorni_fatti = max(0.0, giorni_totali - giorni_da_fare)
-
-            metriche_minds[key] = {
-                "giorni_totali": giorni_totali,
-                "giorni_da_fare": giorni_da_fare,
-                "giorni_fatti": giorni_fatti,
-            }
-
-    return metriche_minds
-
-
-def arricchisci_portafoglio_minds(df_portfolio, metriche_minds):
-    """
-    Applica i giorni calcolati ai progetti nella Dashboard.
-    """
-    if df_portfolio.empty or not metriche_minds:
-        return df_portfolio
-
-    out = df_portfolio.copy()
-    for idx in out.index:
-        key = chiave_progetto(out.at[idx, "Progetto"])
-        if key in metriche_minds:
-            m = metriche_minds[key]
-            out.at[idx, "Fatto"] = m["giorni_fatti"]
-            out.at[idx, "Da fare"] = m["giorni_da_fare"]
-
-            tot = m["giorni_totali"]
-            if tot > 0:
-                sal_calc = (m["giorni_fatti"] / tot) * 100.0
-                out.at[idx, "SAL sorgente"] = sal_calc
-                out.at[idx, "SAL"] = min(max(sal_calc, 0.0), 100.0)
-                out.at[idx, "Stato"] = stato_da_sal(sal_calc)
-
-    return out
-
-# ============================================================
-# RICONOSCIMENTO FOGLI E RICERCA PROGETTI
-# ============================================================
-
 def tipo_sal_da_nome(nome):
     nome_norm = normalizza_testo(nome).replace(" ", "")
     if "(epal+mgio)" in nome_norm or "(mgio+epal)" in nome_norm:
@@ -632,37 +546,50 @@ def score_match_foglio(progetto, foglio, team=None):
 
     if not p_key or not f_key:
         return 0.0
+
+    base_score = 0.0
+
     if p_key == f_key:
-        return 1.0
+        base_score = 1.0
+    elif ("anal" in p_key and "pred" in p_key) and ("anal" in f_key and "pred" in f_key):
+        base_score = 0.95
+    else:
+        p_ns, f_ns = p_key.replace(" ", ""), f_key.replace(" ", "")
+        if p_ns == f_ns:
+            base_score = 0.98
+        elif f_ns in p_ns or p_ns in f_ns:
+            if min(len(p_ns), len(f_ns)) / max(len(p_ns), len(f_ns)) >= 0.35:
+                base_score = 0.85
 
-    if ("anal" in p_key and "pred" in p_key) and ("anal" in f_key and "pred" in f_key):
-        return 0.95
+    if base_score == 0.0:
+        p_words = tokenizza(pulisci_nome_progetto(progetto))
+        f_words = tokenizza(estrai_nome_progetto_da_foglio_sal(foglio))
+        
+        if p_words and f_words:
+            matches = sum(1 for fw in f_words if any(pw.startswith(fw) or fw.startswith(pw) for pw in p_words))
+            if matches > 0 and matches == len(f_words):
+                base_score = 0.80 + (0.15 * (matches / max(len(p_words), len(f_words))))
+            else:
+                intersection = p_words & f_words
+                if intersection:
+                    jaccard = len(intersection) / len(p_words | f_words)
+                    if jaccard >= 0.30:
+                        base_score = 0.70 + (0.20 * jaccard)
 
-    p_ns, f_ns = p_key.replace(" ", ""), f_key.replace(" ", "")
-    if p_ns == f_ns:
-        return 0.98
-    if f_ns in p_ns or p_ns in f_ns:
-        if min(len(p_ns), len(f_ns)) / max(len(p_ns), len(f_ns)) >= 0.35:
-            return 0.85
+    if base_score == 0.0:
+        seq_ratio = SequenceMatcher(None, p_key, f_key).ratio()
+        if seq_ratio >= 0.60:
+            base_score = seq_ratio
 
-    p_words = tokenizza(pulisci_nome_progetto(progetto))
-    f_words = tokenizza(estrai_nome_progetto_da_foglio_sal(foglio))
-    
-    if p_words and f_words:
-        matches = sum(1 for fw in f_words if any(pw.startswith(fw) or fw.startswith(pw) for pw in p_words))
-        if matches > 0 and matches == len(f_words):
-            return 0.80 + (0.15 * (matches / max(len(p_words), len(f_words))))
+    # Priorità al foglio con il tag del team corretto (nuova logica)
+    if base_score > 0.0 and team:
+        tipo_foglio = tipo_sal_da_nome(foglio)
+        if tipo_foglio == team:
+            base_score += 0.05
+        elif team == "EPAL+MGIO" and tipo_foglio == "EPAL+MGIO":
+            base_score += 0.08
 
-        intersection = p_words & f_words
-        if intersection:
-            jaccard = len(intersection) / len(p_words | f_words)
-            if jaccard >= 0.30:
-                return 0.70 + (0.20 * jaccard)
-
-    seq_ratio = SequenceMatcher(None, p_key, f_key).ratio()
-    if seq_ratio >= 0.60:
-        return seq_ratio
-    return 0.0
+    return base_score
 
 
 def opport_ricerca_foglio(progetto, filtro_team, sheet_names, soglia_minima=0.35):
@@ -671,8 +598,13 @@ def opport_ricerca_foglio(progetto, filtro_team, sheet_names, soglia_minima=0.35
         norm_nome = normalizza_testo(nome)
         if not norm_nome.startswith("sal") or "gantt" in norm_nome:
             continue
+        
         tipo = tipo_sal_da_nome(nome)
-        if filtro_team is None or tipo in {filtro_team, "EPAL+MGIO", None}:
+        
+        # Gestione estesa per progetti combinati
+        if filtro_team == "EPAL+MGIO":
+            candidati.append(nome)
+        elif filtro_team is None or tipo in {filtro_team, "EPAL+MGIO", None}:
             candidati.append(nome)
 
     if not candidati:
@@ -705,17 +637,88 @@ def lista_fogli_sal(sheet_names, team=None):
         tipo = tipo_sal_da_nome(nome)
         if team is None:
             risultati.append(nome)
-        elif team == "EPAL" and tipo in {"EPAL", "EPAL+MGIO"}:
+        elif team == "EPAL" and tipo in {"EPAL", "EPAL+MGIO", None}:
             risultati.append(nome)
-        elif team == "MGIO" and tipo in {"MGIO", "EPAL+MGIO"}:
+        elif team == "MGIO" and tipo in {"MGIO", "EPAL+MGIO", None}:
             risultati.append(nome)
-        elif team == "EPAL+MGIO" and tipo == "EPAL+MGIO":
+        elif team == "EPAL+MGIO":
             risultati.append(nome)
         elif team not in {"EPAL", "MGIO", "EPAL+MGIO"}:
             risultati.append(nome)
             
     return risultati
 
+
+# ============================================================
+# ESTREZIONE METRICHE MINDS_SAL / MINDS_TASK
+# ============================================================
+
+def calcola_metriche_minds(fogli):
+    if "MINDS_SAL" not in fogli or "MINDS_task" not in fogli:
+        return {}
+
+    df_sal = fogli["MINDS_SAL"]
+    df_task = fogli["MINDS_task"]
+
+    col_proj_sal = trova_colonna_progetto(df_sal)
+    col_res = trova_colonna_da_fare(df_sal)
+    col_proj_task = trova_colonna_progetto(df_task)
+    col_ore = trova_colonna_lavoro_totale_ore(df_task)
+
+    if not col_proj_sal or not col_res or not col_proj_task or not col_ore:
+        return {}
+
+    ore_totali_mappa = {}
+    for _, row in df_task.iterrows():
+        key = chiave_progetto(row[col_proj_task])
+        if key:
+            val_ore = serie_numerica(pd.Series([row[col_ore]])).iloc[0]
+            if pd.notna(val_ore):
+                ore_totali_mappa[key] = ore_totali_mappa.get(key, 0.0) + float(val_ore)
+
+    metriche_minds = {}
+    for _, row in df_sal.iterrows():
+        key = chiave_progetto(row[col_proj_sal])
+        if not key:
+            continue
+
+        residuo = serie_numerica(pd.Series([row[col_res]])).iloc[0]
+        ore_tot = ore_totali_mappa.get(key, float("nan"))
+
+        if pd.notna(ore_tot):
+            giorni_totali = ore_tot / 8.0
+            giorni_da_fare = float(residuo) if pd.notna(residuo) else 0.0
+            giorni_fatti = max(0.0, giorni_totali - giorni_da_fare)
+
+            metriche_minds[key] = {
+                "giorni_totali": giorni_totali,
+                "giorni_da_fare": giorni_da_fare,
+                "giorni_fatti": giorni_fatti,
+            }
+
+    return metriche_minds
+
+
+def arricchisci_portafoglio_minds(df_portfolio, metriche_minds):
+    if df_portfolio.empty or not metriche_minds:
+        return df_portfolio
+
+    out = df_portfolio.copy()
+    for idx in out.index:
+        key = chiave_progetto(out.at[idx, "Progetto"])
+        if key in metriche_minds:
+            m = metriche_minds[key]
+            out.at[idx, "Fatto"] = m["giorni_fatti"]
+            out.at[idx, "Da fare"] = m["giorni_da_fare"]
+
+            tot = m["giorni_totali"]
+            if tot > 0:
+                sal_calc = (m["giorni_fatti"] / tot) * 100.0
+                out.at[idx, "SAL sorgente"] = sal_calc
+                out.at[idx, "SAL"] = min(max(sal_calc, 0.0), 100.0)
+                out.at[idx, "Stato"] = stato_da_sal(sal_calc)
+
+    return out
 
 # ============================================================
 # GESTIONE RIGHE E CALCOLO GIORNI
@@ -1280,7 +1283,7 @@ def costruisci_attivita(df, nome_foglio):
 # VISTE GRAFICHE
 # ============================================================
 
-def grafico_ranking(df, titolo, ordinamento="SAL decrescente"):
+def grafico_ranking(df, titolo, ordinamento="SAL crescente"):
     plot_df = ordina_portafoglio(df.dropna(subset=["SAL"]).copy(), ordinamento)
     if plot_df.empty:
         st.info("Nessun SAL disponibile.")
@@ -1318,8 +1321,8 @@ def grafico_ranking(df, titolo, ordinamento="SAL decrescente"):
     )
     fig.update_layout(
         height=max(430, len(plot_df) * 38), 
-        margin=dict(l=20, r=85, t=60, b=40), 
-        legend=dict(orientation="h", y=1.02, x=0)
+        margin=dict(l=20, r=85, t=90, b=40), 
+        legend=dict(orientation="h", yanchor="bottom", y=1.08, x=0)
     )
     fig.update_traces(
         textposition="outside", 
@@ -1467,8 +1470,8 @@ def grafico_attivita(df_attivita, progetto):
     fig.update_yaxes(automargin=True)
     fig.update_layout(
         height=max(430, len(plot_df) * 40), 
-        margin=dict(l=20, r=85, t=60, b=40), 
-        legend=dict(orientation="h", y=1.02, x=0)
+        margin=dict(l=20, r=85, t=90, b=40), 
+        legend=dict(orientation="h", yanchor="bottom", y=1.08, x=0)
     )
     fig.update_traces(
         textposition="outside", 
@@ -1523,17 +1526,26 @@ def grafico_ripartizione_lavoro(pct_fatti, pct_da_fare):
 
 
 def tabella_portafoglio(df):
-    colonne = ["Progetto", "Team", "SAL", "Stato", "Stato sorgente", "Fatto", "Da fare"]
-    if "SAL atteso" in df.columns and df["SAL atteso"].notna().any():
+    df_tab = df.copy()
+    
+    # Calcolo dinamico della colonna Giorni Totali
+    df_tab["Giorni totali"] = df_tab["Fatto"].fillna(0) + df_tab["Da fare"].fillna(0)
+    mask_nan = df_tab["Fatto"].isna() & df_tab["Da fare"].isna()
+    df_tab.loc[mask_nan, "Giorni totali"] = float("nan")
+
+    colonne = ["Progetto", "Team", "SAL", "Stato", "Stato sorgente", "Giorni totali", "Fatto", "Da fare"]
+    if "SAL atteso" in df_tab.columns and df_tab["SAL atteso"].notna().any():
         colonne += ["SAL atteso", "Scostamento"]
         
-    tabella = df[colonne].copy()
+    tabella = df_tab[colonne].copy()
+    tabella["Giorni totali"] = tabella["Giorni totali"].apply(formatta_numero)
     tabella["Fatto"] = tabella["Fatto"].apply(formatta_numero)
     tabella["Da fare"] = tabella["Da fare"].apply(formatta_numero)
 
     config = {
         "SAL": st.column_config.ProgressColumn("SAL", min_value=0, max_value=100, format="%.1f%%"),
         "Stato sorgente": st.column_config.TextColumn("Stato GANTT"),
+        "Giorni totali": st.column_config.TextColumn("Giorni totali"),
         "Fatto": st.column_config.TextColumn("Giorni fatti"),
         "Da fare": st.column_config.TextColumn("Giorni da fare"),
     }
@@ -1715,7 +1727,7 @@ if vista == "Executive":
     k6.metric("Avanzato", int((portfolio_filtrato["Stato"] == "In stato avanzato").sum()))
     st.caption(f"Calcolo: {metodo_sal}")
 
-    ord_exec = st.radio("Ordinamento", ["SAL crescente", "SAL decrescente", "Nome progetto"], index=1, horizontal=True)
+    ord_exec = st.radio("Ordinamento", ["SAL crescente", "SAL decrescente", "Nome progetto"], index=0, horizontal=True)
     port_ord = ordina_portafoglio(portfolio_filtrato, ord_exec)
     grafico_ranking(portfolio_filtrato, "Avanzamento progetti", ord_exec)
 
@@ -1761,7 +1773,7 @@ elif vista == "Avanzamento":
         st.stop()
         
     st.subheader(f"Avanzamento · {scope}")
-    ord_avanz = st.radio("Ordinamento", ["SAL crescente", "SAL decrescente", "Nome progetto"], index=1, horizontal=True)
+    ord_avanz = st.radio("Ordinamento", ["SAL crescente", "SAL decrescente", "Nome progetto"], index=0, horizontal=True)
     port_ord = ordina_portafoglio(portfolio_filtrato, ord_avanz)
     grafico_ranking(portfolio_filtrato, "Ranking SAL", ord_avanz)
     st.markdown("---")
@@ -1813,11 +1825,21 @@ elif vista == "Dettaglio progetto":
     else:
         sal_vis = riepilogo["SAL"]
 
-    p1, p2, p3, p4 = st.columns(4)
+    # Visualizzazione su 5 metriche per accogliere "Giorni Totali" e Percentuali
+    p1, p2, p3, p4, p5 = st.columns(5)
     p1.metric("SAL", formatta_percentuale(sal_vis))
-    p2.metric("Fatti", formatta_numero(riep_gg["giorni_fatti"]))
-    p3.metric("Da fare", formatta_numero(riep_gg["giorni_da_fare"]))
-    p4.metric("Stato", riepilogo["Stato"])
+    p2.metric("Giorni Totali", formatta_numero(riep_gg["giorni_totali"]))
+
+    if riep_gg["disponibile"]:
+        fatti_str = f"{formatta_numero(riep_gg['giorni_fatti'])} ({formatta_percentuale(riep_gg['pct_fatti'])})"
+        da_fare_str = f"{formatta_numero(riep_gg['giorni_da_fare'])} ({formatta_percentuale(riep_gg['pct_da_fare'])})"
+    else:
+        fatti_str = formatta_numero(riep_gg["giorni_fatti"])
+        da_fare_str = formatta_numero(riep_gg["giorni_da_fare"])
+
+    p3.metric("Fatti", fatti_str)
+    p4.metric("Da fare", da_fare_str)
+    p5.metric("Stato", riepilogo["Stato"])
 
     if riep_gg["disponibile"]:
         grafico_ripartizione_lavoro(riep_gg["pct_fatti"], riep_gg["pct_da_fare"])
