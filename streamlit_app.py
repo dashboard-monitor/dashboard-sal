@@ -83,7 +83,7 @@ PLOTLY_CONFIG = {
 
 
 # ============================================================
-# STILE STREAMLIT (CON FIX TESTO TRONCATO)
+# STILE STREAMLIT
 # ============================================================
 
 st.markdown(
@@ -105,7 +105,6 @@ st.markdown(
             font-weight: 600;
         }
 
-        /* Fix per rendere visibili testi lunghi come lo Stato senza troncare */
         [data-testid="stMetricValue"] {
             font-size: 1.3rem !important;
             white-space: normal !important;
@@ -1178,38 +1177,22 @@ def arricchisci_portafoglio_con_giorni_sal_dettaglio(df, fogli, sheet_names):
         
     out = df.copy()
     for idx in out.index:
-        progetto = out.at[idx, "Progetto"]
-        if "Team" in out.columns:
-            team = out.at[idx, "Team"]
-        else:
-            team = "N/D"
-            
-        if "SAL" in out.columns:
-            sal_gantt = out.at[idx, "SAL"]
-        else:
-            sal_gantt = float("nan")
+        # Protegge i dati gia calcolati ufficialmente da MINDS_SAL e MINDS_task
+        orig_f = out.at[idx, "Fatto"] if "Fatto" in out.columns else float("nan")
+        orig_d = out.at[idx, "Da fare"] if "Da fare" in out.columns else float("nan")
 
-        if "Fatto" in out.columns:
-            orig_f = out.at[idx, "Fatto"]
-        else:
-            orig_f = float("nan")
-            
-        if "Da fare" in out.columns:
-            orig_d = out.at[idx, "Da fare"]
-        else:
-            orig_d = float("nan")
+        if pd.notna(orig_f) and pd.notna(orig_d):
+            continue
+
+        progetto = out.at[idx, "Progetto"]
+        team = out.at[idx, "Team"] if "Team" in out.columns else "N/D"
+        sal_gantt = out.at[idx, "SAL"] if "SAL" in out.columns else float("nan")
 
         fatto, da_fare = calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names, sal_gantt)
         
         if pd.notna(fatto) and pd.notna(da_fare):
             out.at[idx, "Fatto"] = fatto
             out.at[idx, "Da fare"] = da_fare
-        elif pd.notna(orig_f) or pd.notna(orig_d):
-            out.at[idx, "Fatto"] = orig_f
-            out.at[idx, "Da fare"] = orig_d
-        else:
-            out.at[idx, "Fatto"] = float("nan")
-            out.at[idx, "Da fare"] = float("nan")
             
     return out
 
@@ -1826,7 +1809,7 @@ elif vista == "Dettaglio progetto":
     else:
         sal_vis = riepilogo["SAL"]
 
-    # RIGA 1: Metriche principali
+    # RIGA 1: Metrike principali
     p1, p2, p3, p4, p5 = st.columns(5)
     p1.metric("SAL", formatta_percentuale(sal_vis))
     p2.metric("Giorni Totali", formatta_numero(riep_gg["giorni_totali"]))
@@ -1834,7 +1817,7 @@ elif vista == "Dettaglio progetto":
     p4.metric("Giorni da fare", formatta_numero(riep_gg["giorni_da_fare"]))
     p5.metric("Stato", riepilogo["Stato"])
 
-    # RIGA 2: Percentuali aggiuntive direttamente sotto i relativi Giorni
+    # RIGA 2: Percentuali aggiuntive allineate sotto Giorni fatti e Giorni da fare
     if riep_gg["disponibile"]:
         _, _, p3_pct, p4_pct, _ = st.columns(5)
         p3_pct.metric("% Giorni fatti", formatta_percentuale(riep_gg["pct_fatti"]))
