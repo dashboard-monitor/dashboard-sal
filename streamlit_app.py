@@ -135,6 +135,19 @@ def pulisci_testo_emoji(text):
     return text
 
 
+def pulisci_nome_progetto(text):
+    if not text or pd.isna(text):
+        return ""
+    text_str = str(text)
+    def filtri_parentesi(match):
+        val = match.group(1).strip().upper().replace(" ", "")
+        if val in ["EPAL", "MGIO", "EPAL+MGIO", "MGIO+EPAL"]:
+            return f"({val})"
+        return " "
+    cleaned = re.sub(r"\(([^)]*)\)", filtri_parentesi, text_str)
+    return cleaned.strip()
+
+
 def normalizza_testo(value):
     if value is None or pd.isna(value):
         return ""
@@ -157,7 +170,7 @@ def tokenizza(value):
         "sal", "epal", "mgio", "progetto", "progetti", "gantt",
         "anal", "pred", "minipia", "srl", "spa", "soc", "coop", "cooperativa",
         "benefit", "e", "dei", "del", "della", "dello", "degli", "di", "da",
-        "le", "la", "il", "l", "un", "una", "uno",
+        "le", "la", "il", "l",
     }
     return {
         token
@@ -324,7 +337,7 @@ def stato_da_sal(value):
 
 
 # ============================================================
-# RICONOSCIMENTO COLONNE SORGENTE
+# RICONOSCIMENTO COLONNE
 # ============================================================
 
 def trova_colonna(
@@ -334,6 +347,7 @@ def trova_colonna(
     contains_any=None,
     exclude=None,
 ):
+
     exact = exact or []
     contains_all = contains_all or []
     contains_any = contains_any or []
@@ -1209,6 +1223,7 @@ def score_match_foglio(progetto, foglio, team=None):
 
     score = 0.0
 
+    # Matching bidirezionale
     if f_key in p_key or p_key in f_key:
         score += 0.70
 
@@ -1409,7 +1424,6 @@ def costruisci_attivita(df, nome_foglio):
 
     out["SAL"] = out["SAL sorgente"].clip(lower=0, upper=100)
 
-    # Raggruppa per attività univoca per evitare l'impilamento grafico
     out_consolidato = (
         out.groupby("Attività", as_index=False)
         .agg({
