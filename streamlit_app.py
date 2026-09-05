@@ -122,9 +122,7 @@ st.markdown(
 
 def ora_italiana():
     try:
-        return datetime.now(
-            ZoneInfo("Europe/Rome")
-        )
+        return datetime.now(ZoneInfo("Europe/Rome"))
     except Exception:
         return datetime.now()
 
@@ -184,10 +182,7 @@ def tokenizza(value):
 
 def pulisci_dataframe(df):
     df = df.copy()
-    df.columns = [
-        str(c).strip()
-        for c in df.columns
-    ]
+    df.columns = [str(c).strip() for c in df.columns]
     df = df.dropna(how="all")
     return df
 
@@ -469,14 +464,16 @@ def trova_colonna_fatto(df):
         df,
         exact=[
             "FATTO (GIORNI)", "FATTO", "GIORNI FATTI",
-            "GIORNI EFFETTUATI", "GIORNI FATTO",
+            "GIORNI EFFETTUATI", "GIORNI FATTO", "GG FATTI",
+            "GG FATTO", "GIORNI UOMO FATTI", "FATTI", "GIORNI FATTO (GG)"
         ],
+        contains_any=["fatto", "fatti", "effettuati", "svolti"],
+        exclude=["da fare", "da_fare", "atteso", "previsto", "target", "pianificato"]
     )
-
     if col is not None:
         return col
 
-    return trova_colonna(df, contains_all=["fatto", "giorn"])
+    return trova_colonna(df, contains_all=["giorn", "fatt"])
 
 
 def trova_colonna_da_fare(df):
@@ -484,14 +481,16 @@ def trova_colonna_da_fare(df):
         df,
         exact=[
             "DA FARE (GIORNI)", "DA FARE", "GIORNI DA FARE",
-            "GIORNI RESIDUI", "RESIDUO",
+            "GIORNI RESIDUI", "RESIDUO", "RESIDUI", "GG DA FARE",
+            "GG RESIDUI", "GIORNI RIMANENTI", "RIMANENTI"
         ],
+        contains_any=["da fare", "da_fare", "residui", "residuo", "rimanenti"],
+        exclude=["fatto", "fatti", "atteso", "previsto"]
     )
-
     if col is not None:
         return col
 
-    return trova_colonna(df, contains_any=["da fare", "residui", "residuo"])
+    return trova_colonna(df, contains_all=["giorn", "fare"])
 
 
 def trova_colonna_sal_atteso(df):
@@ -1286,8 +1285,17 @@ def trova_foglio_sal_migliore(progetto, team, sheet_names):
     return foglio, score
 
 
-def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names):
+def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names, sal_gantt=None):
     team_norm = normalizza_team(team)
+
+    def e_valido_con_guardrail(nome_f, res):
+        if not res["disponibile"]:
+            return False
+        if pd.notna(sal_gantt) and pd.notna(res["pct_fatti"]):
+            diff = abs(float(sal_gantt) - float(res["pct_fatti"]))
+            if diff > 30.0: # Guardrail anti falsi positivi
+                return False
+        return True
 
     if team_norm == "EPAL+MGIO":
         foglio_epal, s_epal = opport_ricerca_foglio(progetto, "EPAL", sheet_names, soglia_minima=0.50)
@@ -1304,21 +1312,24 @@ def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names):
             else {"disponibile": False}
         )
 
-        if foglio_epal and foglio_mgio and foglio_epal != foglio_mgio and res_epal["disponibile"] and res_mgio["disponibile"]:
+        valid_epal = e_valido_con_guardrail(foglio_epal, res_epal)
+        valid_mgio = e_valido_con_guardrail(foglio_mgio, res_mgio)
+
+        if foglio_epal and foglio_mgio and foglio_epal != foglio_mgio and valid_epal and valid_mgio:
             fatto_tot = res_epal["giorni_fatti"] + res_mgio["giorni_fatti"]
             da_fare_tot = res_epal["giorni_da_fare"] + res_mgio["giorni_da_fare"]
             return fatto_tot, da_fare_tot
 
-        if res_epal["disponibile"]:
+        if valid_epal:
             return res_epal["giorni_fatti"], res_epal["giorni_da_fare"]
 
-        if res_mgio["disponibile"]:
+        if valid_mgio:
             return res_mgio["giorni_fatti"], res_mgio["giorni_da_fare"]
 
         foglio_comb, _ = opport_ricerca_foglio(progetto, None, sheet_names, soglia_minima=0.50)
         if foglio_comb and foglio_comb in fogli:
             res_comb = calcola_giorni_progetto(fogli[foglio_comb], foglio_comb)
-            if res_comb["disponibile"]:
+            if e_valido_con_guardrail(foglio_comb, res_comb):
                 return res_comb["giorni_fatti"], res_comb["giorni_da_fare"]
 
         return float("nan"), float("nan")
@@ -1330,7 +1341,7 @@ def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names):
 
         if foglio_single and foglio_single in fogli:
             res = calcola_giorni_progetto(fogli[foglio_single], foglio_single)
-            if res["disponibile"]:
+            if e_valido_con_guardrail(foglio_single, res):
                 return res["giorni_fatti"], res["giorni_da_fare"]
 
         return float("nan"), float("nan")
@@ -1345,6 +1356,7 @@ def arricchisci_portafoglio_con_giorni_sal(df, fogli, sheet_names):
     for idx in out.index:
         progetto = out.at[idx, "Progetto"]
         team = out.at[idx, "Team"] if "Team" in out.columns else "N/D"
+        sal_gantt = out.at[idx, "SAL"] if "SAL" in out.columns else float("nan")
 
         orig_fatto = out.at[idx, "Fatto"] if "Fatto" in out.columns else float("nan")
         orig_da_fare = out.at[idx, "Da fare"] if "Da fare" in out.columns else float("nan")
@@ -1353,7 +1365,8 @@ def arricchisci_portafoglio_con_giorni_sal(df, fogli, sheet_names):
             progetto,
             team,
             fogli,
-            sheet_names
+            sheet_names,
+            sal_gantt=sal_gantt
         )
 
         if pd.notna(fatto) and pd.notna(da_fare):
