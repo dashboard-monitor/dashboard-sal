@@ -22,7 +22,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# RECUPERO SICURO DELL'ID DEL FILE DASHBOARD SORGENTE
 try:
     SHEET_ID = st.secrets["SOURCE_FILE_ID"]
 except Exception:
@@ -84,7 +83,7 @@ PLOTLY_CONFIG = {
 
 
 # ============================================================
-# STILE STREAMLIT
+# STILE STREAMLIT (CON FIX TESTO TRONCATO)
 # ============================================================
 
 st.markdown(
@@ -104,6 +103,13 @@ st.markdown(
 
         [data-testid="stMetricLabel"] {
             font-weight: 600;
+        }
+
+        /* Fix per rendere visibili testi lunghi come lo Stato senza troncare */
+        [data-testid="stMetricValue"] {
+            font-size: 1.3rem !important;
+            white-space: normal !important;
+            word-break: break-word !important;
         }
 
         div[data-testid="stExpander"] {
@@ -581,7 +587,6 @@ def score_match_foglio(progetto, foglio, team=None):
         if seq_ratio >= 0.60:
             base_score = seq_ratio
 
-    # Priorità al foglio con il tag del team corretto (nuova logica)
     if base_score > 0.0 and team:
         tipo_foglio = tipo_sal_da_nome(foglio)
         if tipo_foglio == team:
@@ -600,8 +605,6 @@ def opport_ricerca_foglio(progetto, filtro_team, sheet_names, soglia_minima=0.35
             continue
         
         tipo = tipo_sal_da_nome(nome)
-        
-        # Gestione estesa per progetti combinati
         if filtro_team == "EPAL+MGIO":
             candidati.append(nome)
         elif filtro_team is None or tipo in {filtro_team, "EPAL+MGIO", None}:
@@ -1321,8 +1324,8 @@ def grafico_ranking(df, titolo, ordinamento="SAL crescente"):
     )
     fig.update_layout(
         height=max(430, len(plot_df) * 38), 
-        margin=dict(l=20, r=85, t=90, b=40), 
-        legend=dict(orientation="h", yanchor="bottom", y=1.08, x=0)
+        margin=dict(l=20, r=85, t=100, b=40), 
+        legend=dict(orientation="h", yanchor="bottom", y=1.12, x=0, xanchor="left")
     )
     fig.update_traces(
         textposition="outside", 
@@ -1470,8 +1473,8 @@ def grafico_attivita(df_attivita, progetto):
     fig.update_yaxes(automargin=True)
     fig.update_layout(
         height=max(430, len(plot_df) * 40), 
-        margin=dict(l=20, r=85, t=90, b=40), 
-        legend=dict(orientation="h", yanchor="bottom", y=1.08, x=0)
+        margin=dict(l=20, r=85, t=100, b=40), 
+        legend=dict(orientation="h", yanchor="bottom", y=1.12, x=0, xanchor="left")
     )
     fig.update_traces(
         textposition="outside", 
@@ -1516,9 +1519,9 @@ def grafico_ripartizione_lavoro(pct_fatti, pct_da_fare):
         hovertemplate="<b>%{fullData.name}</b><br>%{x:.1f}%<extra></extra>"
     )
     fig.update_layout(
-        height=245, 
-        margin=dict(l=20, r=20, t=60, b=35), 
-        legend=dict(orientation="h", y=1.02, x=0), 
+        height=260, 
+        margin=dict(l=20, r=20, t=80, b=35), 
+        legend=dict(orientation="h", yanchor="bottom", y=1.12, x=0, xanchor="left"), 
         uniformtext_minsize=10, 
         uniformtext_mode="hide"
     )
@@ -1528,7 +1531,6 @@ def grafico_ripartizione_lavoro(pct_fatti, pct_da_fare):
 def tabella_portafoglio(df):
     df_tab = df.copy()
     
-    # Calcolo dinamico della colonna Giorni Totali
     df_tab["Giorni totali"] = df_tab["Fatto"].fillna(0) + df_tab["Da fare"].fillna(0)
     mask_nan = df_tab["Fatto"].isna() & df_tab["Da fare"].isna()
     df_tab.loc[mask_nan, "Giorni totali"] = float("nan")
@@ -1651,7 +1653,6 @@ if GANTT_MGIO in fogli:
 else:
     portfolio_mgio = pd.DataFrame()
 
-# Integrazione MINDS per calcolo automatico dei Giorni Fatti / Totali
 metriche_minds = calcola_metriche_minds(fogli)
 portfolio_epal = arricchisci_portafoglio_minds(portfolio_epal, metriche_minds)
 portfolio_mgio = arricchisci_portafoglio_minds(portfolio_mgio, metriche_minds)
@@ -1825,21 +1826,19 @@ elif vista == "Dettaglio progetto":
     else:
         sal_vis = riepilogo["SAL"]
 
-    # Visualizzazione su 5 metriche per accogliere "Giorni Totali" e Percentuali
+    # RIGA 1: Metriche principali
     p1, p2, p3, p4, p5 = st.columns(5)
     p1.metric("SAL", formatta_percentuale(sal_vis))
     p2.metric("Giorni Totali", formatta_numero(riep_gg["giorni_totali"]))
-
-    if riep_gg["disponibile"]:
-        fatti_str = f"{formatta_numero(riep_gg['giorni_fatti'])} ({formatta_percentuale(riep_gg['pct_fatti'])})"
-        da_fare_str = f"{formatta_numero(riep_gg['giorni_da_fare'])} ({formatta_percentuale(riep_gg['pct_da_fare'])})"
-    else:
-        fatti_str = formatta_numero(riep_gg["giorni_fatti"])
-        da_fare_str = formatta_numero(riep_gg["giorni_da_fare"])
-
-    p3.metric("Fatti", fatti_str)
-    p4.metric("Da fare", da_fare_str)
+    p3.metric("Giorni fatti", formatta_numero(riep_gg["giorni_fatti"]))
+    p4.metric("Giorni da fare", formatta_numero(riep_gg["giorni_da_fare"]))
     p5.metric("Stato", riepilogo["Stato"])
+
+    # RIGA 2: Percentuali aggiuntive direttamente sotto i relativi Giorni
+    if riep_gg["disponibile"]:
+        _, _, p3_pct, p4_pct, _ = st.columns(5)
+        p3_pct.metric("% Giorni fatti", formatta_percentuale(riep_gg["pct_fatti"]))
+        p4_pct.metric("% Giorni da fare", formatta_percentuale(riep_gg["pct_da_fare"]))
 
     if riep_gg["disponibile"]:
         grafico_ripartizione_lavoro(riep_gg["pct_fatti"], riep_gg["pct_da_fare"])
