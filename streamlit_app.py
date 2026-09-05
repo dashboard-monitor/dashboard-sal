@@ -569,25 +569,26 @@ def trova_colonne_giorni_sal(df, nome_foglio):
     if col_fatto is not None and col_da_fare is not None:
         return (col_fatto, col_da_fare, "intestazioni del foglio SAL")
 
-    if len(df.columns) >= 9:
-        candidato_fatto = col_fatto if col_fatto is not None else df.columns[7]
-        candidato_da_fare = col_da_fare if col_da_fare is not None else df.columns[8]
+    num_cols = len(df.columns)
+    candidates = []
+    if num_cols >= 9:
+        candidates.append((df.columns[7], df.columns[8]))
+    if num_cols >= 8:
+        candidates.append((df.columns[6], df.columns[7]))
+    if num_cols >= 7:
+        candidates.append((df.columns[5], df.columns[6]))
 
-        valori_fatto = serie_numerica(df[candidato_fatto])
-        valori_da_fare = serie_numerica(df[candidato_da_fare])
+    for c1, c2 in candidates:
+        if c1 == c2:
+            continue
+        s1 = serie_numerica(df[c1])
+        s2 = serie_numerica(df[c2])
+        if s1.notna().any() or s2.notna().any():
+            f_col = col_fatto if col_fatto is not None else c1
+            df_col = col_da_fare if col_da_fare is not None else c2
+            return (f_col, df_col, "colonne adiacenti del SAL")
 
-        if valori_fatto.notna().any() or valori_da_fare.notna().any():
-            return (
-                candidato_fatto,
-                candidato_da_fare,
-                "colonne H:I del SAL individuale"
-            )
-
-    return (
-        col_fatto,
-        col_da_fare,
-        "intestazioni disponibili"
-    )
+    return (col_fatto, col_da_fare, "intestazioni disponibili")
 
 
 # ============================================================
@@ -1161,10 +1162,10 @@ def aggiungi_flag_condiviso(df, portfolio_epal, portfolio_mgio):
 def lista_fogli_sal(sheet_names, team=None):
     risultati = []
     for nome in sheet_names:
-        if nome in TEMPLATE_SAL:
+        if not normalizza_testo(nome).startswith("sal"):
             continue
 
-        if not normalizza_testo(nome).startswith("sal_"):
+        if "gantt" in normalizza_testo(nome):
             continue
 
         tipo = tipo_sal_da_nome(nome)
@@ -1221,35 +1222,51 @@ def score_match_foglio(progetto, foglio, team=None):
     if p_key == f_key:
         return 1.0
 
-    if p_key in f_key or f_key in p_key:
-        len_ratio = min(len(p_key), len(f_key)) / max(len(p_key), len(f_key))
-        if len_ratio >= 0.6:
-            return 0.90
-        else:
-            return 0.70
+    # Alias specifico per Analisi Predittiva
+    if ("anal" in p_key and "pred" in p_key) and ("anal" in f_key and "pred" in f_key):
+        return 0.95
 
-    p_words = set(p_key.split())
-    f_words = set(f_key.split())
+    # 1. Confronto senza spazi (es. "timeout" vs "time out")
+    p_nospace = p_key.replace(" ", "")
+    f_nospace = f_key.replace(" ", "")
+
+    if p_nospace == f_nospace:
+        return 0.98
+
+    if f_nospace in p_nospace or p_nospace in f_nospace:
+        ratio = min(len(p_nospace), len(f_nospace)) / max(len(p_nospace), len(f_nospace))
+        if ratio >= 0.35:
+            return 0.85
+
+    # 2. Matching per abbreviazioni e prefissi (es. "fis" -> "fisioterapia")
+    p_words = tokenizza(p_str)
+    f_words = tokenizza(f_str)
 
     if p_words and f_words:
+        matches = 0
+        for fw in f_words:
+            if any(pw.startswith(fw) or fw.startswith(pw) for pw in p_words):
+                matches += 1
+
+        if matches > 0 and matches == len(f_words):
+            return 0.80 + (0.15 * (matches / max(len(p_words), len(f_words))))
+
         intersection = p_words & f_words
-        union = p_words | f_words
-        jaccard = len(intersection) / len(union)
-        if jaccard >= 0.5:
-            return 0.80 + (0.15 * jaccard)
+        if intersection:
+            jaccard = len(intersection) / len(p_words | f_words)
+            if jaccard >= 0.30:
+                return 0.70 + (0.20 * jaccard)
 
     seq_ratio = SequenceMatcher(None, p_key, f_key).ratio()
-    if seq_ratio >= 0.70:
+    if seq_ratio >= 0.60:
         return seq_ratio
 
     return 0.0
 
 
-def opport_ricerca_foglio(progetto, filtro_team, sheet_names, soglia_minima=0.50):
+def opport_ricerca_foglio(progetto, filtro_team, sheet_names, soglia_minima=0.35):
     candidati = []
     for nome in sheet_names:
-        if nome in TEMPLATE_SAL:
-            continue
         norm_nome = normalizza_testo(nome)
         if not norm_nome.startswith("sal"):
             continue
@@ -1276,9 +1293,9 @@ def opport_ricerca_foglio(progetto, filtro_team, sheet_names, soglia_minima=0.50
 
 
 def trova_foglio_sal_migliore(progetto, team, sheet_names):
-    foglio, score = opport_ricerca_foglio(progetto, team, sheet_names, soglia_minima=0.50)
+    foglio, score = opport_ricerca_foglio(progetto, team, sheet_names, soglia_minima=0.35)
     if not foglio:
-        foglio, score = opport_ricerca_foglio(progetto, None, sheet_names, soglia_minima=0.50)
+        foglio, score = opport_ricerca_foglio(progetto, None, sheet_names, soglia_minima=0.35)
 
     return foglio, score
 
@@ -1287,8 +1304,8 @@ def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names, sal_gant
     team_norm = normalizza_team(team)
 
     if team_norm == "EPAL+MGIO":
-        foglio_epal, s_epal = opport_ricerca_foglio(progetto, "EPAL", sheet_names, soglia_minima=0.50)
-        foglio_mgio, s_mgio = opport_ricerca_foglio(progetto, "MGIO", sheet_names, soglia_minima=0.50)
+        foglio_epal, s_epal = opport_ricerca_foglio(progetto, "EPAL", sheet_names, soglia_minima=0.35)
+        foglio_mgio, s_mgio = opport_ricerca_foglio(progetto, "MGIO", sheet_names, soglia_minima=0.35)
 
         res_epal = (
             calcola_giorni_progetto(fogli[foglio_epal], foglio_epal)
@@ -1315,7 +1332,7 @@ def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names, sal_gant
         if valid_mgio:
             return res_mgio["giorni_fatti"], res_mgio["giorni_da_fare"]
 
-        foglio_comb, _ = opport_ricerca_foglio(progetto, None, sheet_names, soglia_minima=0.50)
+        foglio_comb, _ = opport_ricerca_foglio(progetto, None, sheet_names, soglia_minima=0.35)
         if foglio_comb and foglio_comb in fogli:
             res_comb = calcola_giorni_progetto(fogli[foglio_comb], foglio_comb)
             if res_comb["disponibile"]:
@@ -1324,9 +1341,9 @@ def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names, sal_gant
         return float("nan"), float("nan")
 
     else:
-        foglio_single, _ = opport_ricerca_foglio(progetto, team_norm, sheet_names, soglia_minima=0.50)
+        foglio_single, _ = opport_ricerca_foglio(progetto, team_norm, sheet_names, soglia_minima=0.35)
         if not foglio_single:
-            foglio_single, _ = opport_ricerca_foglio(progetto, None, sheet_names, soglia_minima=0.50)
+            foglio_single, _ = opport_ricerca_foglio(progetto, None, sheet_names, soglia_minima=0.35)
 
         if foglio_single and foglio_single in fogli:
             res = calcola_giorni_progetto(fogli[foglio_single], foglio_single)
@@ -1362,8 +1379,8 @@ def arricchisci_portafoglio_con_giorni_sal(df, fogli, sheet_names):
             out.at[idx, "Fatto"] = fatto
             out.at[idx, "Da fare"] = da_fare
         elif pd.notna(orig_fatto) or pd.notna(orig_da_fare):
-            out.at[idx, "Fatto"] = orig_fatto
-            out.at[idx, "Da fare"] = orig_da_fare
+            out.at[idx, "Fatto"] = orig_fatto if pd.notna(orig_fatto) else float("nan")
+            out.at[idx, "Da fare"] = orig_da_fare if pd.notna(orig_da_fare) else float("nan")
         else:
             out.at[idx, "Fatto"] = float("nan")
             out.at[idx, "Da fare"] = float("nan")
@@ -1412,7 +1429,6 @@ def costruisci_attivita(df, nome_foglio):
 
     out["SAL"] = out["SAL sorgente"].clip(lower=0, upper=100)
 
-    # Raggruppa per attività univoca per evitare l'impilamento grafico
     out_consolidato = (
         out.groupby("Attività", as_index=False)
         .agg({
