@@ -1248,7 +1248,7 @@ def score_match_foglio(progetto, foglio, team=None):
     return min(score, 1.0)
 
 
-def opport_ricerca_foglio(progetto, filtro_team, sheet_names):
+def opport_ricerca_foglio(progetto, filtro_team, sheet_names, soglia_minima=0.50):
     candidati = []
     for nome in sheet_names:
         if nome in TEMPLATE_SAL:
@@ -1271,13 +1271,17 @@ def opport_ricerca_foglio(progetto, filtro_team, sheet_names):
 
     scores = [(nome, score_match_foglio(progetto, nome, filtro_team)) for nome in candidati]
     scores.sort(key=lambda x: x[1], reverse=True)
-    return scores[0]
+
+    if scores and scores[0][1] >= soglia_minima:
+        return scores[0]
+
+    return None, 0.0
 
 
 def trova_foglio_sal_migliore(progetto, team, sheet_names):
-    foglio, score = opport_ricerca_foglio(progetto, team, sheet_names)
+    foglio, score = opport_ricerca_foglio(progetto, team, sheet_names, soglia_minima=0.50)
     if not foglio:
-        foglio, score = opport_ricerca_foglio(progetto, None, sheet_names)
+        foglio, score = opport_ricerca_foglio(progetto, None, sheet_names, soglia_minima=0.50)
 
     return foglio, score
 
@@ -1286,8 +1290,8 @@ def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names):
     team_norm = normalizza_team(team)
 
     if team_norm == "EPAL+MGIO":
-        foglio_epal, s_epal = opport_ricerca_foglio(progetto, "EPAL", sheet_names)
-        foglio_mgio, s_mgio = opport_ricerca_foglio(progetto, "MGIO", sheet_names)
+        foglio_epal, s_epal = opport_ricerca_foglio(progetto, "EPAL", sheet_names, soglia_minima=0.50)
+        foglio_mgio, s_mgio = opport_ricerca_foglio(progetto, "MGIO", sheet_names, soglia_minima=0.50)
 
         res_epal = (
             calcola_giorni_progetto(fogli[foglio_epal], foglio_epal)
@@ -1305,13 +1309,13 @@ def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names):
             da_fare_tot = res_epal["giorni_da_fare"] + res_mgio["giorni_da_fare"]
             return fatto_tot, da_fare_tot
 
-        if res_epal["disponibile"] and not res_mgio["disponibile"]:
+        if res_epal["disponibile"]:
             return res_epal["giorni_fatti"], res_epal["giorni_da_fare"]
 
-        if res_mgio["disponibile"] and not res_epal["disponibile"]:
+        if res_mgio["disponibile"]:
             return res_mgio["giorni_fatti"], res_mgio["giorni_da_fare"]
 
-        foglio_comb, _ = opport_ricerca_foglio(progetto, None, sheet_names)
+        foglio_comb, _ = opport_ricerca_foglio(progetto, None, sheet_names, soglia_minima=0.50)
         if foglio_comb and foglio_comb in fogli:
             res_comb = calcola_giorni_progetto(fogli[foglio_comb], foglio_comb)
             if res_comb["disponibile"]:
@@ -1320,9 +1324,9 @@ def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names):
         return float("nan"), float("nan")
 
     else:
-        foglio_single, _ = opport_ricerca_foglio(progetto, team_norm, sheet_names)
+        foglio_single, _ = opport_ricerca_foglio(progetto, team_norm, sheet_names, soglia_minima=0.50)
         if not foglio_single:
-            foglio_single, _ = opport_ricerca_foglio(progetto, None, sheet_names)
+            foglio_single, _ = opport_ricerca_foglio(progetto, None, sheet_names, soglia_minima=0.50)
 
         if foglio_single and foglio_single in fogli:
             res = calcola_giorni_progetto(fogli[foglio_single], foglio_single)
@@ -1406,6 +1410,7 @@ def costruisci_attivita(df, nome_foglio):
 
     out["SAL"] = out["SAL sorgente"].clip(lower=0, upper=100)
 
+    # Raggruppa per attività univoca per evitare l'impilamento grafico
     out_consolidato = (
         out.groupby("Attività", as_index=False)
         .agg({
