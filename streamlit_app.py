@@ -1209,11 +1209,11 @@ def estrai_nome_progetto_da_foglio_sal(nome_foglio):
 
 
 def score_match_foglio(progetto, foglio, team=None):
-    p_clean = pulisci_nome_progetto(progetto)
-    f_clean = estrai_nome_progetto_da_foglio_sal(foglio)
+    p_str = pulisci_nome_progetto(progetto)
+    f_str = estrai_nome_progetto_da_foglio_sal(foglio)
 
-    p_key = chiave_progetto(p_clean)
-    f_key = chiave_progetto(f_clean)
+    p_key = chiave_progetto(p_str)
+    f_key = chiave_progetto(f_str)
 
     if not p_key or not f_key:
         return 0.0
@@ -1221,31 +1221,28 @@ def score_match_foglio(progetto, foglio, team=None):
     if p_key == f_key:
         return 1.0
 
-    score = 0.0
+    if p_key in f_key or f_key in p_key:
+        len_ratio = min(len(p_key), len(f_key)) / max(len(p_key), len(f_key))
+        if len_ratio >= 0.6:
+            return 0.90
+        else:
+            return 0.70
 
-    # Matching bidirezionale
-    if f_key in p_key or p_key in f_key:
-        score += 0.70
+    p_words = set(p_key.split())
+    f_words = set(f_key.split())
 
-    p_tokens = tokenizza(p_clean)
-    f_tokens = tokenizza(f_clean)
+    if p_words and f_words:
+        intersection = p_words & f_words
+        union = p_words | f_words
+        jaccard = len(intersection) / len(union)
+        if jaccard >= 0.5:
+            return 0.80 + (0.15 * jaccard)
 
-    if p_tokens and f_tokens:
-        intersezione = p_tokens & f_tokens
-        if intersezione:
-            copertura_f = len(intersezione) / len(f_tokens)
-            copertura_p = len(intersezione) / len(p_tokens)
-            score = max(score, 0.50 + 0.30 * copertura_f + 0.20 * copertura_p)
+    seq_ratio = SequenceMatcher(None, p_key, f_key).ratio()
+    if seq_ratio >= 0.70:
+        return seq_ratio
 
-    fuzzy = SequenceMatcher(None, p_key, f_key).ratio()
-    score = max(score, fuzzy)
-
-    tipo = tipo_sal_da_nome(foglio)
-    if team is not None and tipo is not None:
-        if tipo == team:
-            score += 0.05
-
-    return min(score, 1.0)
+    return 0.0
 
 
 def opport_ricerca_foglio(progetto, filtro_team, sheet_names, soglia_minima=0.50):
@@ -1289,15 +1286,6 @@ def trova_foglio_sal_migliore(progetto, team, sheet_names):
 def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names, sal_gantt=None):
     team_norm = normalizza_team(team)
 
-    def e_valido_con_guardrail(nome_f, res):
-        if not res["disponibile"]:
-            return False
-        if pd.notna(sal_gantt) and pd.notna(res["pct_fatti"]):
-            diff = abs(float(sal_gantt) - float(res["pct_fatti"]))
-            if diff > 30.0:  # Guardrail anti falsi positivi
-                return False
-        return True
-
     if team_norm == "EPAL+MGIO":
         foglio_epal, s_epal = opport_ricerca_foglio(progetto, "EPAL", sheet_names, soglia_minima=0.50)
         foglio_mgio, s_mgio = opport_ricerca_foglio(progetto, "MGIO", sheet_names, soglia_minima=0.50)
@@ -1313,8 +1301,8 @@ def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names, sal_gant
             else {"disponibile": False}
         )
 
-        valid_epal = e_valido_con_guardrail(foglio_epal, res_epal)
-        valid_mgio = e_valido_con_guardrail(foglio_mgio, res_mgio)
+        valid_epal = res_epal["disponibile"]
+        valid_mgio = res_mgio["disponibile"]
 
         if foglio_epal and foglio_mgio and foglio_epal != foglio_mgio and valid_epal and valid_mgio:
             fatto_tot = res_epal["giorni_fatti"] + res_mgio["giorni_fatti"]
@@ -1330,7 +1318,7 @@ def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names, sal_gant
         foglio_comb, _ = opport_ricerca_foglio(progetto, None, sheet_names, soglia_minima=0.50)
         if foglio_comb and foglio_comb in fogli:
             res_comb = calcola_giorni_progetto(fogli[foglio_comb], foglio_comb)
-            if e_valido_con_guardrail(foglio_comb, res_comb):
+            if res_comb["disponibile"]:
                 return res_comb["giorni_fatti"], res_comb["giorni_da_fare"]
 
         return float("nan"), float("nan")
@@ -1342,7 +1330,7 @@ def calcola_giorni_da_sal_dettaglio(progetto, team, fogli, sheet_names, sal_gant
 
         if foglio_single and foglio_single in fogli:
             res = calcola_giorni_progetto(fogli[foglio_single], foglio_single)
-            if e_valido_con_guardrail(foglio_single, res):
+            if res["disponibile"]:
                 return res["giorni_fatti"], res["giorni_da_fare"]
 
         return float("nan"), float("nan")
@@ -1373,7 +1361,7 @@ def arricchisci_portafoglio_con_giorni_sal(df, fogli, sheet_names):
         if pd.notna(fatto) and pd.notna(da_fare):
             out.at[idx, "Fatto"] = fatto
             out.at[idx, "Da fare"] = da_fare
-        elif pd.notna(orig_fatto) and pd.notna(orig_da_fare):
+        elif pd.notna(orig_fatto) or pd.notna(orig_da_fare):
             out.at[idx, "Fatto"] = orig_fatto
             out.at[idx, "Da fare"] = orig_da_fare
         else:
@@ -1424,6 +1412,7 @@ def costruisci_attivita(df, nome_foglio):
 
     out["SAL"] = out["SAL sorgente"].clip(lower=0, upper=100)
 
+    # Raggruppa per attività univoca per evitare l'impilamento grafico
     out_consolidato = (
         out.groupby("Attività", as_index=False)
         .agg({
