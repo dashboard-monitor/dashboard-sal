@@ -1741,7 +1741,7 @@ if vista == "Executive":
         return f"""
         <div style="
             border-radius: 12px;
-            padding: 0.75rem 0.85rem;
+            padding: 0.75rem 0.5rem;
             background: rgba(128,128,128,.035);
             border: {bordo_css};
             color: inherit;
@@ -1752,8 +1752,17 @@ if vista == "Executive":
             justify-content: space-between;
             box-shadow: 0px 2px 4px rgba(0,0,0,0.03);
         ">
-            <div style="font-size: 0.83rem; font-weight: 600; opacity: 0.90; line-height: 1.15;">{titolo}</div>
-            <div style="font-size: 1.35rem; font-weight: 700;">{valore}</div>
+            <div style="
+                font-size: 0.80rem; 
+                font-weight: 600; 
+                opacity: 0.90; 
+                line-height: 1.15; 
+                letter-spacing: -0.2px; 
+                white-space: nowrap; 
+                overflow: hidden; 
+                text-overflow: clip;
+            ">{titolo}</div>
+            <div style="font-size: 1.35rem; font-weight: 700; margin-top: auto;">{valore}</div>
         </div>
         """
 
