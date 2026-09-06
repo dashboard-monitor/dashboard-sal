@@ -1706,16 +1706,20 @@ if vista == "Executive":
     num_in_corso = len(port_in_corso)
     sal_in_corso, metodo_sal = portfolio_sal(port_in_corso)
 
-    # CSS per abilitare l'andata a capo automatica ed evitare qualunque troncamento
+    # CSS forzato sugli elementi interni per disattivare l'ellipsis di Streamlit
     st.markdown(
         """
         <style>
-            [data-testid="stMetricLabel"] {
-                font-size: 0.72rem !important;
-                font-weight: 600;
+            [data-testid="stMetricLabel"],
+            [data-testid="stMetricLabel"] *,
+            [data-testid="stMetricLabel"] div,
+            [data-testid="stMetricLabel"] p {
+                font-size: 0.67rem !important;
+                font-weight: 600 !important;
                 white-space: normal !important;
-                word-wrap: break-word !important;
-                line-height: 1.15 !important;
+                text-overflow: unset !important;
+                overflow: visible !important;
+                word-break: break-word !important;
             }
         </style>
         """,
