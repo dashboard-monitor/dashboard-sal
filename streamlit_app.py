@@ -1721,7 +1721,7 @@ if vista == "Executive":
 
     st.subheader(f"Portfolio · {scope}")
     k1, k2, k3, k4, k5, k6 = st.columns(6)
-    k1.metric("Progetti complessivi", len(portfolio_filtrato))
+    k1.metric("Progetti totali", len(portfolio_filtrato))
     k2.metric("SAL in corso", formatta_percentuale(sal_in_corso))
     k3.metric("Completati", int((portfolio_filtrato["Stato"] == "Completato").sum()))
     k4.metric("In stato iniziale", int((portfolio_filtrato["Stato"] == "In stato iniziale").sum()))
