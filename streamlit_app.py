@@ -1706,7 +1706,7 @@ if vista == "Executive":
     num_in_corso = len(port_in_corso)
     sal_in_corso, metodo_sal = portfolio_sal(port_in_corso)
 
-    # CSS forzato sugli elementi interni per disattivare l'ellipsis di Streamlit
+    # CSS con font ingrandito e andata a capo ottimizzata per massima leggibilità
     st.markdown(
         """
         <style>
@@ -1714,12 +1714,12 @@ if vista == "Executive":
             [data-testid="stMetricLabel"] *,
             [data-testid="stMetricLabel"] div,
             [data-testid="stMetricLabel"] p {
-                font-size: 0.67rem !important;
+                font-size: 0.80rem !important;
                 font-weight: 600 !important;
                 white-space: normal !important;
                 text-overflow: unset !important;
                 overflow: visible !important;
-                word-break: break-word !important;
+                line-height: 1.25 !important;
             }
         </style>
         """,
