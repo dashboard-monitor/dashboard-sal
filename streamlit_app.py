@@ -1752,7 +1752,7 @@ if vista == "Executive":
             justify-content: space-between;
             box-shadow: 0px 2px 4px rgba(0,0,0,0.03);
         ">
-            <div style="font-size: 0.78rem; font-weight: 500; opacity: 0.85; line-height: 1.15;">{titolo}</div>
+            <div style="font-size: 0.83rem; font-weight: 600; opacity: 0.90; line-height: 1.15;">{titolo}</div>
             <div style="font-size: 1.35rem; font-weight: 700;">{valore}</div>
         </div>
         """
