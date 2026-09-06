@@ -1728,21 +1728,22 @@ if vista == "Executive":
 
     st.subheader(f"Portfolio · {scope}")
     k1, k2, k3, k4, k5, k6 = st.columns(6)
-    k1.metric("Progetti totali", len(portfolio_filtrato))
-    k2.metric("SAL in corso", formatta_percentuale(sal_in_corso))
-    k3.metric("Completati", int((portfolio_filtrato["Stato"] == "Completato").sum()))
 
+    n_tot = len(portfolio_filtrato)
+    sal_txt = formatta_percentuale(sal_in_corso)
+    n_comp = int((portfolio_filtrato["Stato"] == "Completato").sum())
     n_iniz = int((portfolio_filtrato["Stato"] == "In stato iniziale").sum())
     n_inter = int((portfolio_filtrato["Stato"] == "In stato intermedio").sum())
     n_avanz = int((portfolio_filtrato["Stato"] == "In stato avanzato").sum())
 
-    def crea_card_stato(titolo, valore, colore_bordo):
+    def crea_card(titolo, valore, colore_bordo=None):
+        bordo_css = f"2.5px solid {colore_bordo}" if colore_bordo else "1px solid rgba(128,128,128,.22)"
         return f"""
         <div style="
             border-radius: 12px;
             padding: 0.75rem 0.85rem;
             background: rgba(128,128,128,.035);
-            border: 2.5px solid {colore_bordo};
+            border: {bordo_css};
             color: inherit;
             height: 82px;
             box-sizing: border-box;
@@ -1751,17 +1752,23 @@ if vista == "Executive":
             justify-content: space-between;
             box-shadow: 0px 2px 4px rgba(0,0,0,0.04);
         ">
-            <div style="font-size: 0.78rem; font-weight: 600; line-height: 1.15;">{titolo}</div>
+            <div style="font-size: 0.78rem; font-weight: 700; line-height: 1.15;">{titolo}</div>
             <div style="font-size: 1.3rem; font-weight: 700;">{valore}</div>
         </div>
         """
 
+    with k1:
+        st.markdown(crea_card("Progetti totali", n_tot), unsafe_allow_html=True)
+    with k2:
+        st.markdown(crea_card("SAL in corso", sal_txt), unsafe_allow_html=True)
+    with k3:
+        st.markdown(crea_card("Completati", n_comp), unsafe_allow_html=True)
     with k4:
-        st.markdown(crea_card_stato("In stato iniziale", n_iniz, COLORI_STATO["In stato iniziale"]), unsafe_allow_html=True)
+        st.markdown(crea_card("In stato iniziale", n_iniz, COLORI_STATO["In stato iniziale"]), unsafe_allow_html=True)
     with k5:
-        st.markdown(crea_card_stato("In stato intermedio", n_inter, COLORI_STATO["In stato intermedio"]), unsafe_allow_html=True)
+        st.markdown(crea_card("In stato intermedio", n_inter, COLORI_STATO["In stato intermedio"]), unsafe_allow_html=True)
     with k6:
-        st.markdown(crea_card_stato("In stato avanzato", n_avanz, COLORI_STATO["In stato avanzato"]), unsafe_allow_html=True)
+        st.markdown(crea_card("In stato avanzato", n_avanz, COLORI_STATO["In stato avanzato"]), unsafe_allow_html=True)
 
     # Riquadro sottostante separato correttamente
     _, col_in_corso = st.columns([1, 1])
