@@ -1737,7 +1737,7 @@ if vista == "Executive":
     n_avanz = int((portfolio_filtrato["Stato"] == "In stato avanzato").sum())
 
     def crea_card(titolo, valore, colore_bordo=None):
-        bordo_css = f"1.8px solid {colore_bordo}" if colore_bordo else "1px solid rgba(128,128,128,.22)"
+        bordo_css = f"2.5px solid {colore_bordo}" if colore_bordo else "1.5px solid rgba(128,128,128,.22)"
         return f"""
         <div style="
             border-radius: 12px;
