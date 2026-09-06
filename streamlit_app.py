@@ -1706,13 +1706,16 @@ if vista == "Executive":
     num_in_corso = len(port_in_corso)
     sal_in_corso, metodo_sal = portfolio_sal(port_in_corso)
 
-    # CSS per ridurre leggermente il font ed evitare i tre puntini (...) nei titoli
+    # CSS per abilitare l'andata a capo automatica ed evitare qualunque troncamento
     st.markdown(
         """
         <style>
             [data-testid="stMetricLabel"] {
-                font-size: 0.78rem !important;
+                font-size: 0.72rem !important;
                 font-weight: 600;
+                white-space: normal !important;
+                word-wrap: break-word !important;
+                line-height: 1.15 !important;
             }
         </style>
         """,
