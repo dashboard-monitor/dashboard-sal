@@ -1737,7 +1737,7 @@ if vista == "Executive":
     n_avanz = int((portfolio_filtrato["Stato"] == "In stato avanzato").sum())
 
     def crea_card(titolo, valore, colore_bordo=None):
-        bordo_css = f"2.5px solid {colore_bordo}" if colore_bordo else "1px solid rgba(128,128,128,.22)"
+        bordo_css = f"1.8px solid {colore_bordo}" if colore_bordo else "1px solid rgba(128,128,128,.22)"
         return f"""
         <div style="
             border-radius: 12px;
@@ -1750,10 +1750,10 @@ if vista == "Executive":
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            box-shadow: 0px 2px 4px rgba(0,0,0,0.04);
+            box-shadow: 0px 2px 4px rgba(0,0,0,0.03);
         ">
-            <div style="font-size: 0.78rem; font-weight: 700; line-height: 1.15;">{titolo}</div>
-            <div style="font-size: 1.3rem; font-weight: 700;">{valore}</div>
+            <div style="font-size: 0.78rem; font-weight: 500; opacity: 0.85; line-height: 1.15;">{titolo}</div>
+            <div style="font-size: 1.35rem; font-weight: 700;">{valore}</div>
         </div>
         """
 
