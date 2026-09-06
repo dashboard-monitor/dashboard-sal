@@ -962,12 +962,12 @@ def costruisci_portafoglio(df, team, source_sheet):
     else:
         out["Stato sorgente"] = ""
 
-    # Rileva eventuale spunta verde o dicitura COMPLETO nel testo del nome progetto
+    # Imposta pulita la dicitura COMPLETO evitando duplicazioni di testo
     for idx in indici:
         nome_orig = str(df.loc[idx, col_progetto])
-        if "✅" in nome_orig or "✔" in nome_orig:
-            cur = out.at[idx, "Stato sorgente"]
-            out.at[idx, "Stato sorgente"] = (cur + " COMPLETO").strip()
+        cur = out.at[idx, "Stato sorgente"]
+        if stato_sorgente_e_completo(cur) or "✅" in nome_orig or "✔" in nome_orig:
+            out.at[idx, "Stato sorgente"] = "COMPLETO"
 
     out["Stato"] = [normalizza_stato_progetto(ss, sal) for ss, sal in zip(out["Stato sorgente"], out["SAL"])]
 
@@ -1098,6 +1098,7 @@ def consolida_progetti_univoci(df):
             
         if completo_sorgente:
             stato = "Completato"
+            stato_sorgente = "COMPLETO"
         else:
             stato = stato_da_sal(sal)
 
@@ -1725,8 +1726,9 @@ if vista == "Executive":
         if scope == "Tutti - EPAL+MGIO":
             grafico_confronto_team(portfolio_filtrato)
         else:
-            f = portfolio_filtrato["Fatto"].dropna().sum()
-            r = portfolio_filtrato["Da fare"].dropna().sum()
+            # Modifica: calcola i giorni fatti e da fare usando 'port_in_corso'
+            f = port_in_corso["Fatto"].dropna().sum()
+            r = port_in_corso["Da fare"].dropna().sum()
             if pd.notna(f) or pd.notna(r):
                 fig = px.bar(
                     pd.DataFrame({"Voce": ["Fatto", "Da fare"], "Giorni": [f, r]}), 
