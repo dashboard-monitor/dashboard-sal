@@ -1730,8 +1730,8 @@ if vista == "Executive":
     k1, k2, k3, k4, k5, k6 = st.columns(6)
     k1.metric("Progetti totali", len(portfolio_filtrato))
     k2.metric("SAL in corso", formatta_percentuale(sal_in_corso))
+    k3.metric("Completati", int((portfolio_filtrato["Stato"] == "Completato").sum()))
 
-    n_comp = int((portfolio_filtrato["Stato"] == "Completato").sum())
     n_iniz = int((portfolio_filtrato["Stato"] == "In stato iniziale").sum())
     n_inter = int((portfolio_filtrato["Stato"] == "In stato intermedio").sum())
     n_avanz = int((portfolio_filtrato["Stato"] == "In stato avanzato").sum())
@@ -1740,19 +1740,22 @@ if vista == "Executive":
         return f"""
         <div style="
             border-radius: 12px;
-            padding: 0.85rem 1rem;
+            padding: 0.75rem 0.85rem;
             background: rgba(128,128,128,.035);
             border: 2.5px solid {colore_bordo};
             color: inherit;
+            height: 82px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
             box-shadow: 0px 2px 4px rgba(0,0,0,0.04);
         ">
-            <div style="font-size: 0.80rem; font-weight: 600; line-height: 1.25;">{titolo}</div>
-            <div style="font-size: 1.3rem; font-weight: 700; margin-top: 0.25rem;">{valore}</div>
+            <div style="font-size: 0.78rem; font-weight: 600; line-height: 1.15;">{titolo}</div>
+            <div style="font-size: 1.3rem; font-weight: 700;">{valore}</div>
         </div>
         """
 
-    with k3:
-        st.markdown(crea_card_stato("Completati", n_comp, COLORI_STATO["Completato"]), unsafe_allow_html=True)
     with k4:
         st.markdown(crea_card_stato("In stato iniziale", n_iniz, COLORI_STATO["In stato iniziale"]), unsafe_allow_html=True)
     with k5:
@@ -1760,7 +1763,7 @@ if vista == "Executive":
     with k6:
         st.markdown(crea_card_stato("In stato avanzato", n_avanz, COLORI_STATO["In stato avanzato"]), unsafe_allow_html=True)
 
-    # Riquadro sottostante coordinato con lo stesso stile e il conteggio totale
+    # Riquadro sottostante separato correttamente
     _, col_in_corso = st.columns([1, 1])
     with col_in_corso:
         st.markdown(
@@ -1774,7 +1777,7 @@ if vista == "Executive":
                 border-radius: 12px;
                 font-weight: 700;
                 font-size: 0.88rem;
-                margin-top: -6px;
+                margin-top: 10px;
                 margin-bottom: 8px;
                 letter-spacing: 0.5px;
             ">
