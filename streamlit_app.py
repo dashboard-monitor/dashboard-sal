@@ -1707,12 +1707,37 @@ if vista == "Executive":
 
     st.subheader(f"Portfolio · {scope}")
     k1, k2, k3, k4, k5, k6 = st.columns(6)
-    k1.metric("Progetti", len(portfolio_filtrato))
+    k1.metric("Progetti complessivi", len(portfolio_filtrato))
     k2.metric("SAL in corso", formatta_percentuale(sal_in_corso))
     k3.metric("Completati", int((portfolio_filtrato["Stato"] == "Completato").sum()))
-    k4.metric("Iniziale", int((portfolio_filtrato["Stato"] == "In stato iniziale").sum()))
-    k5.metric("Intermedio", int((portfolio_filtrato["Stato"] == "In stato intermedio").sum()))
-    k6.metric("Avanzato", int((portfolio_filtrato["Stato"] == "In stato avanzato").sum()))
+    k4.metric("In stato iniziale", int((portfolio_filtrato["Stato"] == "In stato iniziale").sum()))
+    k5.metric("In stato intermedio", int((portfolio_filtrato["Stato"] == "In stato intermedio").sum()))
+    k6.metric("In stato avanzato", int((portfolio_filtrato["Stato"] == "In stato avanzato").sum()))
+
+    # Banner rettangolare sottostante le 3 metriche degli stati in corso
+    _, col_in_corso = st.columns([1, 1])
+    with col_in_corso:
+        st.markdown(
+            """
+            <div style="
+                background-color: #1F618D;
+                color: white;
+                text-align: center;
+                padding: 6px 12px;
+                border-radius: 8px;
+                font-weight: bold;
+                font-size: 0.88rem;
+                margin-top: -6px;
+                margin-bottom: 8px;
+                box-shadow: 0px 2px 4px rgba(0,0,0,0.08);
+                letter-spacing: 0.5px;
+            ">
+                PROGETTI IN CORSO
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
     st.caption(f"Calcolo: {metodo_sal}")
 
     ord_exec = st.radio("Ordinamento", ["SAL crescente", "SAL decrescente", "Nome progetto"], index=0, horizontal=True)
