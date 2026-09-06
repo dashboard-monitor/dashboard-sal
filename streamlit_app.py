@@ -1596,7 +1596,7 @@ def carica_workbook(sheet_id):
 if not check_password():
     st.stop()
 
-header_left, header_right = st.columns([6, 1])
+header_left, header_right = st.columns([10, 1])
 with header_left:
     st.title("📊 Dashboard Monitoraggio SAL MiniPIA")
     st.markdown('<div class="dashboard-subtitle">Portafoglio progetti · EPAL · MGIO</div>', unsafe_allow_html=True)
