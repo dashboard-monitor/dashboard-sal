@@ -1703,7 +1703,21 @@ if vista == "Executive":
         st.stop()
         
     port_in_corso = portfolio_filtrato[portfolio_filtrato["Stato"] != "Completato"]
+    num_in_corso = len(port_in_corso)
     sal_in_corso, metodo_sal = portfolio_sal(port_in_corso)
+
+    # CSS per ridurre leggermente il font ed evitare i tre puntini (...) nei titoli
+    st.markdown(
+        """
+        <style>
+            [data-testid="stMetricLabel"] {
+                font-size: 0.78rem !important;
+                font-weight: 600;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
     st.subheader(f"Portfolio · {scope}")
     k1, k2, k3, k4, k5, k6 = st.columns(6)
@@ -1714,25 +1728,25 @@ if vista == "Executive":
     k5.metric("In stato intermedio", int((portfolio_filtrato["Stato"] == "In stato intermedio").sum()))
     k6.metric("In stato avanzato", int((portfolio_filtrato["Stato"] == "In stato avanzato").sum()))
 
-    # Banner rettangolare sottostante le 3 metriche degli stati in corso
+    # Riquadro sottostante coordinato con lo stesso stile e il conteggio totale
     _, col_in_corso = st.columns([1, 1])
     with col_in_corso:
         st.markdown(
-            """
+            f"""
             <div style="
-                background-color: #1F618D;
-                color: white;
+                background: rgba(128,128,128,.035);
+                border: 1px solid rgba(128,128,128,.22);
+                color: inherit;
                 text-align: center;
-                padding: 6px 12px;
-                border-radius: 8px;
-                font-weight: bold;
+                padding: 8px 12px;
+                border-radius: 12px;
+                font-weight: 700;
                 font-size: 0.88rem;
                 margin-top: -6px;
                 margin-bottom: 8px;
-                box-shadow: 0px 2px 4px rgba(0,0,0,0.08);
                 letter-spacing: 0.5px;
             ">
-                PROGETTI IN CORSO
+                PROGETTI IN CORSO: {num_in_corso}
             </div>
             """,
             unsafe_allow_html=True
