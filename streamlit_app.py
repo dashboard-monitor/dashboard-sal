@@ -1730,10 +1730,35 @@ if vista == "Executive":
     k1, k2, k3, k4, k5, k6 = st.columns(6)
     k1.metric("Progetti totali", len(portfolio_filtrato))
     k2.metric("SAL in corso", formatta_percentuale(sal_in_corso))
-    k3.metric("Completati", int((portfolio_filtrato["Stato"] == "Completato").sum()))
-    k4.metric("In stato iniziale", int((portfolio_filtrato["Stato"] == "In stato iniziale").sum()))
-    k5.metric("In stato intermedio", int((portfolio_filtrato["Stato"] == "In stato intermedio").sum()))
-    k6.metric("In stato avanzato", int((portfolio_filtrato["Stato"] == "In stato avanzato").sum()))
+
+    n_comp = int((portfolio_filtrato["Stato"] == "Completato").sum())
+    n_iniz = int((portfolio_filtrato["Stato"] == "In stato iniziale").sum())
+    n_inter = int((portfolio_filtrato["Stato"] == "In stato intermedio").sum())
+    n_avanz = int((portfolio_filtrato["Stato"] == "In stato avanzato").sum())
+
+    def crea_card_stato(titolo, valore, colore_bordo):
+        return f"""
+        <div style="
+            border-radius: 12px;
+            padding: 0.85rem 1rem;
+            background: rgba(128,128,128,.035);
+            border: 2.5px solid {colore_bordo};
+            color: inherit;
+            box-shadow: 0px 2px 4px rgba(0,0,0,0.04);
+        ">
+            <div style="font-size: 0.80rem; font-weight: 600; line-height: 1.25;">{titolo}</div>
+            <div style="font-size: 1.3rem; font-weight: 700; margin-top: 0.25rem;">{valore}</div>
+        </div>
+        """
+
+    with k3:
+        st.markdown(crea_card_stato("Completati", n_comp, COLORI_STATO["Completato"]), unsafe_allow_html=True)
+    with k4:
+        st.markdown(crea_card_stato("In stato iniziale", n_iniz, COLORI_STATO["In stato iniziale"]), unsafe_allow_html=True)
+    with k5:
+        st.markdown(crea_card_stato("In stato intermedio", n_inter, COLORI_STATO["In stato intermedio"]), unsafe_allow_html=True)
+    with k6:
+        st.markdown(crea_card_stato("In stato avanzato", n_avanz, COLORI_STATO["In stato avanzato"]), unsafe_allow_html=True)
 
     # Riquadro sottostante coordinato con lo stesso stile e il conteggio totale
     _, col_in_corso = st.columns([1, 1])
