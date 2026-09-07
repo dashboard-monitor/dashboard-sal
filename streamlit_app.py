@@ -1666,7 +1666,7 @@ st.markdown(
 <img src="https://fondazioneri.it/wp-content/uploads/2018/05/cosa-%C3%A8-innvazione-FRI-scalia-gallery-fullwidth.jpg" alt="Fondazione Ricerca e Innovazione">
 </div>
 <div class="tech-card">
-<img src="https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=300&q=80" alt="Finger Touching Glowing Digital Interface">
+<img src="https://www.visurenetwork.it/wp-content/uploads/2021/03/innovazione-digitale.jpg" alt="Innovazione Digitale Visure Network">
 </div>
 <div class="tech-card">
 <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=300&q=80" alt="Hand touching digital analytics tablet with charts">
