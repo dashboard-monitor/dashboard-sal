@@ -1672,7 +1672,7 @@ st.markdown(
 <img src="https://www.fusenetworks.com/images/easyblog_shared/August_2020/8-24-20/294409557_technology_innovation_400.jpg" alt="Technology Innovation Fuse Networks">
 </div>
 <div class="tech-card">
-<img src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=300&q=80" alt="Global Cloud Network IoT">
+<img src="https://thumbs.dreamstime.com/b/professional-data-analytics-modern-business-intelligence-dashboard-tablet-corporate-setting-sophisticated-displayed-sleek-375871052.jpg" alt="Data Analytics Dashboard">
 </div>
 </div>
 </div>
