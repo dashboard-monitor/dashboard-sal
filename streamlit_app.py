@@ -705,16 +705,19 @@ def arricchisci_portafoglio_minds(df_portfolio, metriche_minds):
         
         m = metriche_minds.get((p_key, t_key), metriche_minds.get(p_key, None))
         if m:
-            out.at[idx, "Fatto"] = round(m["giorni_fatti"], 1) if pd.notna(m["giorni_fatti"]) else float("nan")
-            out.at[idx, "Da fare"] = round(m["giorni_da_fare"], 1) if pd.notna(m["giorni_da_fare"]) else float("nan")
+            if pd.isna(out.at[idx, "Fatto"]) and pd.notna(m["giorni_fatti"]):
+                out.at[idx, "Fatto"] = round(m["giorni_fatti"], 1)
+            if pd.isna(out.at[idx, "Da fare"]) and pd.notna(m["giorni_da_fare"]):
+                out.at[idx, "Da fare"] = round(m["giorni_da_fare"], 1)
 
             tot = m["giorni_totali"]
-            if pd.notna(tot) and tot > 0 and pd.notna(m["giorni_fatti"]):
-                sal_calc = (m["giorni_fatti"] / tot) * 100.0
-                out.at[idx, "SAL sorgente"] = sal_calc
-                out.at[idx, "SAL"] = min(max(sal_calc, 0.0), 100.0)
-                ss = out.at[idx, "Stato sorgente"] if "Stato sorgente" in out.columns else ""
-                out.at[idx, "Stato"] = normalizza_stato_progetto(ss, sal_calc)
+            if pd.notna(tot) and tot > 0 and pd.notna(out.at[idx, "Fatto"]):
+                sal_calc = (out.at[idx, "Fatto"] / tot) * 100.0
+                if pd.isna(out.at[idx, "SAL sorgente"]):
+                    out.at[idx, "SAL sorgente"] = sal_calc
+                    out.at[idx, "SAL"] = min(max(sal_calc, 0.0), 100.0)
+                    ss = out.at[idx, "Stato sorgente"] if "Stato sorgente" in out.columns else ""
+                    out.at[idx, "Stato"] = normalizza_stato_progetto(ss, sal_calc)
 
     return out
 
@@ -983,9 +986,30 @@ def costruisci_portafoglio(df, team, source_sheet):
 
 
 def costruisci_portafoglio_combinato(df, portfolio_epal, portfolio_mgio, source_sheet):
+    if df is None or df.empty:
+        return pd.DataFrame()
+
     base = costruisci_portafoglio(df, "N/D", source_sheet)
     if base.empty:
         return base
+
+    col_fatto_epal = trova_colonna(df, contains_all=["fatto", "epal"])
+    col_da_fare_epal = trova_colonna(df, contains_all=["da fare", "epal"]) or trova_colonna(df, contains_all=["residui", "epal"])
+    col_fatto_mgio = trova_colonna(df, contains_all=["fatto", "mgio"])
+    col_da_fare_mgio = trova_colonna(df, contains_all=["da fare", "mgio"]) or trova_colonna(df, contains_all=["residui", "mgio"])
+
+    if col_fatto_epal or col_fatto_mgio or col_da_fare_epal or col_da_fare_mgio:
+        f_epal = serie_numerica(df[col_fatto_epal]) if col_fatto_epal else pd.Series(0, index=df.index)
+        f_mgio = serie_numerica(df[col_fatto_mgio]) if col_fatto_mgio else pd.Series(0, index=df.index)
+        d_epal = serie_numerica(df[col_da_fare_epal]) if col_da_fare_epal else pd.Series(0, index=df.index)
+        d_mgio = serie_numerica(df[col_da_fare_mgio]) if col_da_fare_mgio else pd.Series(0, index=df.index)
+
+        fatto_tot = f_epal.fillna(0) + f_mgio.fillna(0)
+        da_fare_tot = d_epal.fillna(0) + d_mgio.fillna(0)
+
+        mask_validi = (f_epal.notna() | f_mgio.notna() | d_epal.notna() | d_mgio.notna())
+        base["Fatto"] = fatto_tot.where(mask_validi, float("nan")).round(1)
+        base["Da fare"] = da_fare_tot.where(mask_validi, float("nan")).round(1)
 
     ek = set(portfolio_epal["Progetto"].map(chiave_progetto)) if not portfolio_epal.empty else set()
     mk = set(portfolio_mgio["Progetto"].map(chiave_progetto)) if not portfolio_mgio.empty else set()
@@ -1047,11 +1071,9 @@ def consolida_progetti_univoci(df):
         else:
             d_ser = pd.Series(dtype=float)
             
-        validi_gg = f_ser.notna() & d_ser.notna()
-
-        if validi_gg.any():
-            fatto = round(f_ser.loc[validi_gg].sum(), 1)
-            da_fare = round(d_ser.loc[validi_gg].sum(), 1)
+        if f_ser.notna().any() or d_ser.notna().any():
+            fatto = round(f_ser.dropna().sum(), 1)
+            da_fare = round(d_ser.dropna().sum(), 1)
             totale_gg = round(fatto + da_fare, 1)
         else:
             fatto = da_fare = totale_gg = float("nan")
