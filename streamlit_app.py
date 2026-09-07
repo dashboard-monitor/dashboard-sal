@@ -1607,26 +1607,57 @@ with header_right:
         st.rerun()
 
 # ============================================================
-# BANNER PRESENTAZIONE CON ANIMAZIONE SCORREVOLE & CITAZIONE
+# BANNER PRESENTAZIONE CON ANIMAZIONE RETE NEURALE & CITAZIONE
 # ============================================================
 st.markdown(
     """<style>
-@keyframes scorriOrizzontale {
-    0%   { margin-left: 0%; }
-    50%  { margin-left: calc(100% - 32px); }
-    100% { margin-left: 0%; }
+@keyframes drawLine {
+    0%   { stroke-dashoffset: 150; opacity: 0.2; }
+    50%  { stroke-dashoffset: 0; opacity: 0.9; }
+    100% { stroke-dashoffset: 150; opacity: 0.2; }
 }
-.icona-scorrevole {
-    display: block;
-    animation: scorriOrizzontale 12s ease-in-out infinite;
+@keyframes pulseNode {
+    0%   { r: 2.5px; opacity: 0.3; }
+    50%  { r: 4.5px; opacity: 1; }
+    100% { r: 2.5px; opacity: 0.3; }
+}
+.net-line {
+    stroke: #167D3E;
+    stroke-width: 1.5;
+    stroke-dasharray: 150;
+    stroke-dashoffset: 150;
+    animation: drawLine 5s ease-in-out infinite;
+}
+.net-node {
+    fill: #167D3E;
+    animation: pulseNode 2.5s ease-in-out infinite;
 }
 </style>
 <div style="background: linear-gradient(90deg, rgba(22, 125, 62, 0.12) 0%, rgba(40, 116, 166, 0.05) 100%); border-left: 4px solid #167D3E; padding: 14px 18px; border-radius: 10px; margin-top: 8px; margin-bottom: 22px; box-shadow: 0px 2px 6px rgba(0,0,0,0.04); overflow: hidden;">
-<div style="font-size: 0.78rem; font-weight: 700; letter-spacing: 0.5px; color: #167D3E; margin-bottom: 3px;">Innovazione e Governance digitale</div>
+<div style="font-size: 0.78rem; font-weight: 700; letter-spacing: 0.8px; color: #167D3E; margin-bottom: 3px; text-transform: uppercase;">INNOVAZIONE E GOVERNANCE DIGITALE</div>
 <div style="font-size: 0.93rem; font-style: italic; font-weight: 500; color: inherit; line-height: 1.35;">"L'obiettivo è trasformare i dati in informazioni, e le informazioni in conoscenza strategica."</div>
-<div style="font-size: 0.78rem; font-weight: 600; opacity: 0.75; margin-top: 4px; margin-bottom: 8px;">— Carly Fiorina</div>
-<div style="width: 100%; border-top: 1px dashed rgba(22, 125, 62, 0.25); padding-top: 6px;">
-<div class="icona-scorrevole"><img src="https://cdn-icons-png.flaticon.com/512/2092/2092063.png" width="28" alt="Tech Digital Node"></div>
+<div style="font-size: 0.78rem; font-weight: 600; opacity: 0.75; margin-top: 4px; margin-bottom: 6px;">— Carly Fiorina</div>
+<div style="width: 100%; border-top: 1px dashed rgba(22, 125, 62, 0.25); padding-top: 4px;">
+<svg width="100%" height="40" viewBox="0 0 800 40" preserveAspectRatio="none">
+<line x1="30" y1="20" x2="120" y2="8" class="net-line" style="animation-delay: 0s;"></line>
+<line x1="120" y1="8" x2="210" y2="30" class="net-line" style="animation-delay: 0.6s;"></line>
+<line x1="120" y1="8" x2="310" y2="12" class="net-line" style="animation-delay: 1.2s;"></line>
+<line x1="210" y1="30" x2="310" y2="12" class="net-line" style="animation-delay: 0.8s;"></line>
+<line x1="310" y1="12" x2="420" y2="32" class="net-line" style="animation-delay: 1.5s;"></line>
+<line x1="310" y1="12" x2="520" y2="10" class="net-line" style="animation-delay: 2.0s;"></line>
+<line x1="420" y1="32" x2="520" y2="10" class="net-line" style="animation-delay: 1.8s;"></line>
+<line x1="520" y1="10" x2="630" y2="26" class="net-line" style="animation-delay: 2.4s;"></line>
+<line x1="630" y1="26" x2="770" y2="14" class="net-line" style="animation-delay: 2.8s;"></line>
+
+<circle cx="30" cy="20" r="3" class="net-node" style="animation-delay: 0s;"></circle>
+<circle cx="120" cy="8" r="3" class="net-node" style="animation-delay: 0.5s;"></circle>
+<circle cx="210" cy="30" r="3" class="net-node" style="animation-delay: 1.0s;"></circle>
+<circle cx="310" cy="12" r="3" class="net-node" style="animation-delay: 1.5s;"></circle>
+<circle cx="420" cy="32" r="3" class="net-node" style="animation-delay: 2.0s;"></circle>
+<circle cx="520" cy="10" r="3" class="net-node" style="animation-delay: 2.5s;"></circle>
+<circle cx="630" cy="26" r="3" class="net-node" style="animation-delay: 3.0s;"></circle>
+<circle cx="770" cy="14" r="3" class="net-node" style="animation-delay: 3.5s;"></circle>
+</svg>
 </div>
 </div>""",
     unsafe_allow_html=True
