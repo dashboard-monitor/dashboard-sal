@@ -1618,15 +1618,15 @@ st.markdown(
 }
 .icona-scorrevole {
     display: block;
-    animation: scorriOrizzontale 8s ease-in-out infinite;
+    animation: scorriOrizzontale 12s ease-in-out infinite;
 }
 </style>
 <div style="background: linear-gradient(90deg, rgba(22, 125, 62, 0.12) 0%, rgba(40, 116, 166, 0.05) 100%); border-left: 4px solid #167D3E; padding: 14px 18px; border-radius: 10px; margin-top: 8px; margin-bottom: 22px; box-shadow: 0px 2px 6px rgba(0,0,0,0.04); overflow: hidden;">
-<div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #167D3E; margin-bottom: 3px;">INNOVAZIONE & GOVERNANCE DIGITAL</div>
+<div style="font-size: 0.78rem; font-weight: 700; letter-spacing: 0.5px; color: #167D3E; margin-bottom: 3px;">Innovazione e Governance digitale</div>
 <div style="font-size: 0.93rem; font-style: italic; font-weight: 500; color: inherit; line-height: 1.35;">"L'obiettivo è trasformare i dati in informazioni, e le informazioni in conoscenza strategica."</div>
 <div style="font-size: 0.78rem; font-weight: 600; opacity: 0.75; margin-top: 4px; margin-bottom: 8px;">— Carly Fiorina</div>
 <div style="width: 100%; border-top: 1px dashed rgba(22, 125, 62, 0.25); padding-top: 6px;">
-<div class="icona-scorrevole"><img src="https://cdn-icons-png.flaticon.com/512/2103/2103633.png" width="28" alt="Data Analytics"></div>
+<div class="icona-scorrevole"><img src="https://cdn-icons-png.flaticon.com/512/2092/2092063.png" width="28" alt="Tech Digital Node"></div>
 </div>
 </div>""",
     unsafe_allow_html=True
