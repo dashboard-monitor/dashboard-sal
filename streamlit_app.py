@@ -1702,7 +1702,12 @@ if vista == "Executive":
         st.info("Nessun progetto.")
         st.stop()
         
-    port_in_corso = portfolio_filtrato[portfolio_filtrato["Stato"] != "Completato"]
+    port_in_corso = portfolio_filtrato[portfolio_filtrato["Stato"] != "Completato"].copy()
+    
+    # Arrotonda i singoli valori a 1 cifra decimale per allinearsi a Google Sheets
+    port_in_corso["Fatto"] = port_in_corso["Fatto"].round(1)
+    port_in_corso["Da fare"] = port_in_corso["Da fare"].round(1)
+    
     num_in_corso = len(port_in_corso)
     sal_in_corso, metodo_sal = portfolio_sal(port_in_corso)
 
@@ -1817,8 +1822,8 @@ if vista == "Executive":
             grafico_confronto_team(portfolio_filtrato)
         else:
             # Modifica: calcola i giorni fatti e da fare usando 'port_in_corso'
-            f = port_in_corso["Fatto"].dropna().sum()
-            r = port_in_corso["Da fare"].dropna().sum()
+            f = round(port_in_corso["Fatto"].dropna().sum(), 1)
+            r = round(port_in_corso["Da fare"].dropna().sum(), 1)
             if pd.notna(f) or pd.notna(r):
                 fig = px.bar(
                     pd.DataFrame({"Voce": ["Fatto", "Da fare"], "Giorni": [f, r]}), 
