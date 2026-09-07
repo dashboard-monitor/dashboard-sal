@@ -1669,7 +1669,7 @@ st.markdown(
 <img src="https://png.pngtree.com/thumb_back/fh260/background/20260131/pngtree-artificial-intelligence-concept-with-abstract-neural-network-and-glowing-nodes-background-image_21250755.webp" alt="Artificial Intelligence Neural Network">
 </div>
 <div class="tech-card">
-<img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=300&q=80" alt="Hand touching digital analytics tablet with charts">
+<img src="https://www.fusenetworks.com/images/easyblog_shared/August_2020/8-24-20/294409557_technology_innovation_400.jpg" alt="Technology Innovation Fuse Networks">
 </div>
 <div class="tech-card">
 <img src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=300&q=80" alt="Global Cloud Network IoT">
