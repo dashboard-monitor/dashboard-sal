@@ -1663,16 +1663,16 @@ st.markdown(
 </div>
 <div class="tech-card-container">
 <div class="tech-card">
-<img src="https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=300&q=80" alt="Smart Factory Tablet Operator">
+<img src="https://images.unsplash.com/photo-1581092580497-e0d23cbdf1dc?auto=format&fit=crop&w=300&q=80" alt="Engineers working in industrial lab">
+</div>
+<div class="tech-card">
+<img src="https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=300&q=80" alt="Cyan neon circuit board">
+</div>
+<div class="tech-card">
+<img src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=300&q=80" alt="Smart Factory Tablet Operator">
 </div>
 <div class="tech-card">
 <img src="https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=300&q=80" alt="Touch Digital Interface Cloud">
-</div>
-<div class="tech-card">
-<img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=300&q=80" alt="Analytics">
-</div>
-<div class="tech-card">
-<img src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=300&q=80" alt="Cloud IoT">
 </div>
 </div>
 </div>
