@@ -1663,16 +1663,16 @@ st.markdown(
 </div>
 <div class="tech-card-container">
 <div class="tech-card">
-<img src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=300&q=80" alt="Hand touching smart factory tablet screen">
+<img src="https://fondazioneri.it/wp-content/uploads/2018/05/cosa-%C3%A8-innvazione-FRI-scalia-gallery-fullwidth.jpg" alt="Fondazione Ricerca e Innovazione">
 </div>
 <div class="tech-card">
-<img src="https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=300&q=80" alt="Cyan neon circuit board">
+<img src="https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=300&q=80" alt="Finger Touching Glowing Digital Interface">
 </div>
 <div class="tech-card">
 <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=300&q=80" alt="Hand touching digital analytics tablet with charts">
 </div>
 <div class="tech-card">
-<img src="https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=300&q=80" alt="Touch Digital Interface Cloud">
+<img src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=300&q=80" alt="Global Cloud Network IoT">
 </div>
 </div>
 </div>
