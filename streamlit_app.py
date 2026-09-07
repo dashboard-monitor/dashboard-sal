@@ -1663,16 +1663,16 @@ st.markdown(
 </div>
 <div class="tech-card-container">
 <div class="tech-card">
-<img src="https://images.unsplash.com/photo-1581092335397-9583fe92d232?auto=format&fit=crop&w=250&q=80" alt="Smart Automation">
+<img src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=300&q=80" alt="Robotic Arm & Tablet">
 </div>
 <div class="tech-card">
-<img src="https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&w=250&q=80" alt="AI Human Connection">
+<img src="https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=300&q=80" alt="Tech Interface">
 </div>
 <div class="tech-card">
-<img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=250&q=80" alt="Analytics">
+<img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=300&q=80" alt="Analytics">
 </div>
 <div class="tech-card">
-<img src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=250&q=80" alt="Cloud IoT">
+<img src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=300&q=80" alt="Cloud IoT">
 </div>
 </div>
 </div>
@@ -1723,7 +1723,7 @@ st.markdown(
 <line x1="840" y1="32" x2="895" y2="12" class="net-edge" style="animation-delay: 1.2s;"/>
 <line x1="840" y1="32" x2="890" y2="52" class="net-edge" style="animation-delay: 1.5s;"/>
 <line x1="895" y1="12" x2="890" y2="52" class="net-edge-bright" style="animation-delay: 1.7s;"/>
-<line x1="895" y1="12" x2="960" y2="32" class="net-edge-bright" style="animation-delay: 2.0s;"/>
+<line x1="895" y1="14" x2="960" y2="32" class="net-edge-bright" style="animation-delay: 2.0s;"/>
 <line x1="890" y1="52" x2="960" y2="32" class="net-edge" style="animation-delay: 2.2s;"/>
 <line x1="960" y1="32" x2="990" y2="18" class="net-edge" style="animation-delay: 2.5s;"/>
 <line x1="960" y1="32" x2="990" y2="46" class="net-edge" style="animation-delay: 2.7s;"/>
