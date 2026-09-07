@@ -1612,13 +1612,13 @@ with header_right:
 st.markdown(
     """<style>
 @keyframes scorriOrizzontale {
-    0%   { transform: translateX(0px); }
-    50%  { transform: translateX(calc(100% - 32px)); }
-    100% { transform: translateX(0px); }
+    0%   { margin-left: 0%; }
+    50%  { margin-left: calc(100% - 32px); }
+    100% { margin-left: 0%; }
 }
 .icona-scorrevole {
-    display: inline-block;
-    animation: scorriOrizzontale 6s ease-in-out infinite;
+    display: block;
+    animation: scorriOrizzontale 8s ease-in-out infinite;
 }
 </style>
 <div style="background: linear-gradient(90deg, rgba(22, 125, 62, 0.12) 0%, rgba(40, 116, 166, 0.05) 100%); border-left: 4px solid #167D3E; padding: 14px 18px; border-radius: 10px; margin-top: 8px; margin-bottom: 22px; box-shadow: 0px 2px 6px rgba(0,0,0,0.04); overflow: hidden;">
