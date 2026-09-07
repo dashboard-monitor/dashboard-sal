@@ -705,8 +705,8 @@ def arricchisci_portafoglio_minds(df_portfolio, metriche_minds):
         
         m = metriche_minds.get((p_key, t_key), metriche_minds.get(p_key, None))
         if m:
-            out.at[idx, "Fatto"] = m["giorni_fatti"]
-            out.at[idx, "Da fare"] = m["giorni_da_fare"]
+            out.at[idx, "Fatto"] = round(m["giorni_fatti"], 1) if pd.notna(m["giorni_fatti"]) else float("nan")
+            out.at[idx, "Da fare"] = round(m["giorni_da_fare"], 1) if pd.notna(m["giorni_da_fare"]) else float("nan")
 
             tot = m["giorni_totali"]
             if pd.notna(tot) and tot > 0 and pd.notna(m["giorni_fatti"]):
@@ -920,12 +920,12 @@ def costruisci_portafoglio(df, team, source_sheet):
     out["Team"] = team
 
     if col_fatto:
-        out["Fatto"] = serie_numerica(df.loc[indici, col_fatto])
+        out["Fatto"] = serie_numerica(df.loc[indici, col_fatto]).round(1)
     else:
         out["Fatto"] = float("nan")
         
     if col_da_fare:
-        out["Da fare"] = serie_numerica(df.loc[indici, col_da_fare])
+        out["Da fare"] = serie_numerica(df.loc[indici, col_da_fare]).round(1)
     else:
         out["Da fare"] = float("nan")
     
@@ -1050,9 +1050,9 @@ def consolida_progetti_univoci(df):
         validi_gg = f_ser.notna() & d_ser.notna()
 
         if validi_gg.any():
-            fatto = f_ser.loc[validi_gg].sum()
-            da_fare = d_ser.loc[validi_gg].sum()
-            totale_gg = fatto + da_fare
+            fatto = round(f_ser.loc[validi_gg].sum(), 1)
+            da_fare = round(d_ser.loc[validi_gg].sum(), 1)
+            totale_gg = round(fatto + da_fare, 1)
         else:
             fatto = da_fare = totale_gg = float("nan")
 
