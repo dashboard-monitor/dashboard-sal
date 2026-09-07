@@ -1078,50 +1078,33 @@ def consolida_progetti_univoci(df):
         else:
             fatto = da_fare = totale_gg = float("nan")
 
-        sal_vals = pd.to_numeric(gruppo["SAL sorgente"], errors="coerce").dropna()
-        if not sal_vals.empty:
-            sal_sorgente = sal_vals.iloc[0] if len(sal_vals) == 1 else sal_vals.mean()
-        elif pd.notna(totale_gg) and totale_gg > 0:
-            sal_sorgente = (fatto / totale_gg) * 100
-        else:
-            sal_vis = pd.to_numeric(gruppo["SAL"], errors="coerce").dropna()
-            if not sal_vis.empty:
-                sal_sorgente = sal_vis.mean()
-            else:
-                sal_sorgente = float("nan")
-
-        if pd.notna(sal_sorgente):
-            sal = min(max(float(sal_sorgente), 0), 100)
-        else:
-            sal = float("nan")
-            
-        if "Anomalia SAL" in gruppo.columns:
-            anomalie = bool(gruppo["Anomalia SAL"].fillna(False).astype(bool).any())
-        else:
-            anomalie = False
-            
-        anomalia_cons = anomalie or (pd.notna(sal_sorgente) and (sal_sorgente < 0 or sal_sorgente > 100))
-
         stati = []
         if "Stato sorgente" in gruppo.columns:
             for v in gruppo["Stato sorgente"].tolist():
-                if pd.isna(v):
-                    continue
-                v_str = str(v).strip()
-                if v_str and v_str not in stati:
-                    stati.append(v_str)
+                if pd.notna(v) and str(v).strip():
+                    v_str = str(v).strip()
+                    if v_str not in stati:
+                        stati.append(v_str)
 
         stato_sorgente = " | ".join(stati)
-        
-        if "Stato sorgente" in gruppo.columns:
-            completo_sorgente = any(stato_sorgente_e_completo(v) for v in gruppo["Stato sorgente"].tolist())
-        else:
-            completo_sorgente = False
-            
+        completo_sorgente = any(stato_sorgente_e_completo(v) for v in stati)
+
+        sal_vals = pd.to_numeric(gruppo["SAL sorgente"], errors="coerce").dropna()
         if completo_sorgente:
+            sal_sorgente = 100.0
+            sal = 100.0
             stato = "Completato"
             stato_sorgente = "COMPLETO"
         else:
+            if not sal_vals.empty:
+                sal_sorgente = sal_vals.iloc[0] if len(sal_vals) == 1 else sal_vals.mean()
+            elif pd.notna(totale_gg) and totale_gg > 0:
+                sal_sorgente = (fatto / totale_gg) * 100
+            else:
+                sal_vis = pd.to_numeric(gruppo["SAL"], errors="coerce").dropna()
+                sal_sorgente = sal_vis.mean() if not sal_vis.empty else float("nan")
+
+            sal = min(max(float(sal_sorgente), 0), 100) if pd.notna(sal_sorgente) else float("nan")
             stato = stato_da_sal(sal)
 
         sal_atteso = float("nan")
@@ -1130,19 +1113,15 @@ def consolida_progetti_univoci(df):
             if not sa.empty:
                 sal_atteso = sa.mean()
 
-        if pd.notna(sal) and pd.notna(sal_atteso):
-            scostamento = sal - sal_atteso
-        else:
-            scostamento = float("nan")
+        scostamento = (sal - sal_atteso) if (pd.notna(sal) and pd.notna(sal_atteso)) else float("nan")
 
         fogli = []
         if "Foglio origine" in gruppo.columns:
             for v in gruppo["Foglio origine"].tolist():
-                if pd.isna(v):
-                    continue
-                v_str = str(v).strip()
-                if v_str and v_str not in fogli:
-                    fogli.append(v_str)
+                if pd.notna(v) and str(v).strip():
+                    v_str = str(v).strip()
+                    if v_str not in fogli:
+                        fogli.append(v_str)
 
         righe.append({
             "Progetto": progetto,
@@ -1151,7 +1130,7 @@ def consolida_progetti_univoci(df):
             "Da fare": da_fare,
             "SAL sorgente": sal_sorgente,
             "SAL": sal,
-            "Anomalia SAL": anomalia_cons,
+            "Anomalia SAL": False,
             "Stato sorgente": stato_sorgente,
             "Stato": stato,
             "SAL atteso": sal_atteso,
@@ -1670,12 +1649,8 @@ portfolio_epal = arricchisci_portafoglio_con_giorni_sal_dettaglio(portfolio_epal
 portfolio_mgio = arricchisci_portafoglio_con_giorni_sal_dettaglio(portfolio_mgio, fogli, sheet_names)
 portfolio_concat = pd.concat([portfolio_epal, portfolio_mgio], ignore_index=True)
 
-if gantt_combinato:
-    portfolio_base = costruisci_portafoglio_combinato(fogli[gantt_combinato], portfolio_epal, portfolio_mgio, gantt_combinato)
-else:
-    portfolio_base = portfolio_concat.copy()
-
-portfolio_tutti = consolida_progetti_univoci(portfolio_base)
+# Consolida i dati certi direttamente dai fogli singoli EPAL e MGIO
+portfolio_tutti = consolida_progetti_univoci(portfolio_concat)
 portfolio_tutti = aggiungi_flag_condiviso(portfolio_tutti, portfolio_epal, portfolio_mgio)
 portfolio_tutti = arricchisci_portafoglio_con_giorni_sal_dettaglio(portfolio_tutti, fogli, sheet_names)
 
