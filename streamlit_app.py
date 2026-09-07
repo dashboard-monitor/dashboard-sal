@@ -1606,6 +1606,41 @@ with header_right:
         st.session_state["password_correct"] = False
         st.rerun()
 
+# ============================================================
+# BANNER PRESENTAZIONE CON CITAZIONE AUTOREVOLE & GIF
+# ============================================================
+st.markdown(
+    """
+    <div style="
+        background: linear-gradient(90deg, rgba(22, 125, 62, 0.15) 0%, rgba(40, 116, 166, 0.05) 100%);
+        border-left: 4px solid #167D3E;
+        padding: 14px 18px;
+        border-radius: 10px;
+        margin-top: 8px;
+        margin-bottom: 22px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        box-shadow: 0px 2px 6px rgba(0,0,0,0.04);
+    ">
+        <img src="https://media.giphy.com/media/L1f3uECy3Cz8p25iyC/giphy.gif" width="44" style="border-radius: 6px; flex-shrink: 0;">
+        <div style="flex: 1; min-width: 250px;">
+            <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #167D3E; margin-bottom: 3px;">
+                INNOVAZIONE & GOVERNANCE DIGITAL
+            </div>
+            <div style="font-size: 0.93rem; font-style: italic; font-weight: 500; color: inherit; line-height: 1.35;">
+                "L'obiettivo è trasformare i dati in informazioni, e le informazioni in conoscenza strategica."
+            </div>
+            <div style="font-size: 0.78rem; font-weight: 600; opacity: 0.75; margin-top: 4px;">
+                — Carly Fiorina
+            </div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 try:
     with st.spinner("Caricamento dati in corso..."):
         fogli, timestamp_caricamento = carica_workbook(SHEET_ID)
