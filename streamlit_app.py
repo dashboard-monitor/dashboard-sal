@@ -1607,7 +1607,7 @@ with header_right:
         st.rerun()
 
 # ============================================================
-# BANNER PRESENTAZIONE CON RETE NEURALE COMPLETA & CITAZIONE
+# BANNER PRESENTAZIONE CON RETE NEURALE & CARD INDUSTRIA 4.0/5.0
 # ============================================================
 st.markdown(
     """<style>
@@ -1621,115 +1621,164 @@ st.markdown(
     50%  { r: 6px; opacity: 1; }
     100% { r: 3px; opacity: 0.4; }
 }
-.net-edge {
-    stroke: #167D3E;
-    animation: glowPulse 4s ease-in-out infinite;
+.net-edge { stroke: #167D3E; animation: glowPulse 4s ease-in-out infinite; }
+.net-edge-bright { stroke: #00C9A7; animation: glowPulse 3s ease-in-out infinite; }
+.net-node-green { fill: #167D3E; animation: nodePulse 3.5s ease-in-out infinite; }
+.net-node-cyan { fill: #00C9A7; animation: nodePulse 2.5s ease-in-out infinite; }
+
+.tech-card-container {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
 }
-.net-edge-bright {
-    stroke: #00C9A7;
-    animation: glowPulse 3s ease-in-out infinite;
+.tech-card {
+    position: relative;
+    width: 105px;
+    height: 68px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1.5px solid rgba(22, 125, 62, 0.35);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.12);
+    transition: transform 0.3s ease, border-color 0.3s ease;
 }
-.net-node-green {
-    fill: #167D3E;
-    animation: nodePulse 3.5s ease-in-out infinite;
+.tech-card:hover {
+    transform: translateY(-2px) scale(1.03);
+    border-color: #00C9A7;
 }
-.net-node-cyan {
-    fill: #00C9A7;
-    animation: nodePulse 2.5s ease-in-out infinite;
+.tech-card img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.tech-card-label {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 100%);
+    color: #ffffff;
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 12px 4px 3px 4px;
+    text-align: center;
+    letter-spacing: 0.3px;
 }
 </style>
-<div style="background: linear-gradient(90deg, rgba(22, 125, 62, 0.14) 0%, rgba(10, 40, 70, 0.08) 100%); border-left: 4px solid #167D3E; padding: 16px 20px 12px 20px; border-radius: 12px; margin-top: 8px; margin-bottom: 22px; box-shadow: 0px 4px 12px rgba(0,0,0,0.05); overflow: hidden;">
+<div style="background: linear-gradient(90deg, rgba(22, 125, 62, 0.14) 0%, rgba(10, 40, 70, 0.08) 100%); border-left: 4px solid #167D3E; padding: 16px 20px 10px 20px; border-radius: 12px; margin-top: 8px; margin-bottom: 22px; box-shadow: 0px 4px 12px rgba(0,0,0,0.05); overflow: hidden;">
+<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 12px;">
+<div style="flex: 1; min-width: 280px;">
 <div style="font-size: 0.82rem; font-weight: 800; letter-spacing: 1px; color: #167D3E; margin-bottom: 4px; text-transform: uppercase;">INNOVAZIONE E GOVERNANCE DIGITALE</div>
-<div style="font-size: 0.94rem; font-style: italic; font-weight: 500; color: inherit; line-height: 1.35;">"L'obiettivo è trasformare i dati in informazioni, e le informazioni in conoscenza strategica."</div>
-<div style="font-size: 0.78rem; font-weight: 600; opacity: 0.75; margin-top: 4px; margin-bottom: 12px;">— Carly Fiorina</div>
-<div style="width: 100%; border-top: 1px dashed rgba(22, 125, 62, 0.25); padding-top: 10px;">
-<svg width="100%" height="70" viewBox="0 0 1000 70" preserveAspectRatio="none">
-<!-- Maglia Orizzontale Continua (30 Nodi + 50 Connessioni da X=10 a X=990) -->
-<line x1="10" y1="35" x2="60" y2="15" class="net-edge" style="animation-delay: 0.0s;"/>
-<line x1="10" y1="35" x2="55" y2="55" class="net-edge" style="animation-delay: 0.3s;"/>
-<line x1="60" y1="15" x2="55" y2="55" class="net-edge-bright" style="animation-delay: 0.6s;"/>
-<line x1="60" y1="15" x2="120" y2="35" class="net-edge-bright" style="animation-delay: 0.2s;"/>
-<line x1="55" y1="55" x2="120" y2="35" class="net-edge" style="animation-delay: 0.5s;"/>
+<div style="font-size: 0.93rem; font-style: italic; font-weight: 500; color: inherit; line-height: 1.35;">"L'obiettivo è trasformare i dati in informazioni, e le informazioni in conoscenza strategica."</div>
+<div style="font-size: 0.78rem; font-weight: 600; opacity: 0.75; margin-top: 4px;">— Carly Fiorina</div>
+</div>
+<div class="tech-card-container">
+<div class="tech-card">
+<img src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=250&q=80" alt="Robotica 4.0">
+<div class="tech-card-label">Robotica 4.0</div>
+</div>
+<div class="tech-card">
+<img src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=250&q=80" alt="IA & Uomo">
+<div class="tech-card-label">IA & Uomo</div>
+</div>
+<div class="tech-card">
+<img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=250&q=80" alt="Analytics">
+<div class="tech-card-label">Analytics</div>
+</div>
+<div class="tech-card">
+<img src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=250&q=80" alt="Cloud IoT">
+<div class="tech-card-label">Cloud IoT</div>
+</div>
+</div>
+</div>
+<div style="width: 100%; border-top: 1px dashed rgba(22, 125, 62, 0.25); padding-top: 8px;">
+<svg width="100%" height="60" viewBox="0 0 1000 60" preserveAspectRatio="none">
+<line x1="10" y1="32" x2="60" y2="12" class="net-edge" style="animation-delay: 0.0s;"/>
+<line x1="10" y1="32" x2="55" y2="52" class="net-edge" style="animation-delay: 0.3s;"/>
+<line x1="60" y1="12" x2="55" y2="52" class="net-edge-bright" style="animation-delay: 0.6s;"/>
+<line x1="60" y1="12" x2="120" y2="32" class="net-edge-bright" style="animation-delay: 0.2s;"/>
+<line x1="55" y1="52" x2="120" y2="32" class="net-edge" style="animation-delay: 0.5s;"/>
 
-<line x1="120" y1="35" x2="175" y2="12" class="net-edge" style="animation-delay: 0.8s;"/>
-<line x1="120" y1="35" x2="170" y2="58" class="net-edge" style="animation-delay: 1.0s;"/>
-<line x1="175" y1="12" x2="170" y2="58" class="net-edge-bright" style="animation-delay: 1.2s;"/>
-<line x1="175" y1="12" x2="240" y2="35" class="net-edge-bright" style="animation-delay: 0.4s;"/>
-<line x1="170" y1="58" x2="240" y2="35" class="net-edge" style="animation-delay: 0.9s;"/>
+<line x1="120" y1="32" x2="175" y2="10" class="net-edge" style="animation-delay: 0.8s;"/>
+<line x1="120" y1="32" x2="170" y2="54" class="net-edge" style="animation-delay: 1.0s;"/>
+<line x1="175" y1="10" x2="170" y2="54" class="net-edge-bright" style="animation-delay: 1.2s;"/>
+<line x1="175" y1="10" x2="240" y2="32" class="net-edge-bright" style="animation-delay: 0.4s;"/>
+<line x1="170" y1="54" x2="240" y2="32" class="net-edge" style="animation-delay: 0.9s;"/>
 
-<line x1="240" y1="35" x2="295" y2="18" class="net-edge" style="animation-delay: 1.4s;"/>
-<line x1="240" y1="35" x2="290" y2="52" class="net-edge" style="animation-delay: 1.1s;"/>
-<line x1="295" y1="18" x2="290" y2="52" class="net-edge-bright" style="animation-delay: 1.6s;"/>
-<line x1="295" y1="18" x2="360" y2="35" class="net-edge-bright" style="animation-delay: 0.7s;"/>
-<line x1="290" y1="52" x2="360" y2="35" class="net-edge" style="animation-delay: 1.3s;"/>
+<line x1="240" y1="32" x2="295" y2="16" class="net-edge" style="animation-delay: 1.4s;"/>
+<line x1="240" y1="32" x2="290" y2="48" class="net-edge" style="animation-delay: 1.1s;"/>
+<line x1="295" y1="16" x2="290" y2="48" class="net-edge-bright" style="animation-delay: 1.6s;"/>
+<line x1="295" y1="16" x2="360" y2="32" class="net-edge-bright" style="animation-delay: 0.7s;"/>
+<line x1="290" y1="48" x2="360" y2="32" class="net-edge" style="animation-delay: 1.3s;"/>
 
-<line x1="360" y1="35" x2="415" y2="10" class="net-edge" style="animation-delay: 1.8s;"/>
-<line x1="360" y1="35" x2="410" y2="60" class="net-edge" style="animation-delay: 2.0s;"/>
-<line x1="415" y1="10" x2="410" y2="60" class="net-edge-bright" style="animation-delay: 2.2s;"/>
-<line x1="415" y1="10" x2="480" y2="35" class="net-edge-bright" style="animation-delay: 1.5s;"/>
-<line x1="410" y1="60" x2="480" y2="35" class="net-edge" style="animation-delay: 1.9s;"/>
+<line x1="360" y1="32" x2="415" y2="8" class="net-edge" style="animation-delay: 1.8s;"/>
+<line x1="360" y1="32" x2="410" y2="56" class="net-edge" style="animation-delay: 2.0s;"/>
+<line x1="415" y1="8" x2="410" y2="56" class="net-edge-bright" style="animation-delay: 2.2s;"/>
+<line x1="415" y1="8" x2="480" y2="32" class="net-edge-bright" style="animation-delay: 1.5s;"/>
+<line x1="410" y1="56" x2="480" y2="32" class="net-edge" style="animation-delay: 1.9s;"/>
 
-<line x1="480" y1="35" x2="535" y2="16" class="net-edge" style="animation-delay: 2.4s;"/>
-<line x1="480" y1="35" x2="530" y2="54" class="net-edge" style="animation-delay: 2.1s;"/>
-<line x1="535" y1="16" x2="530" y2="54" class="net-edge-bright" style="animation-delay: 2.6s;"/>
-<line x1="535" y1="16" x2="600" y2="35" class="net-edge-bright" style="animation-delay: 1.7s;"/>
-<line x1="530" y1="54" x2="600" y2="35" class="net-edge" style="animation-delay: 2.3s;"/>
+<line x1="480" y1="32" x2="535" y2="14" class="net-edge" style="animation-delay: 2.4s;"/>
+<line x1="480" y1="32" x2="530" y2="50" class="net-edge" style="animation-delay: 2.1s;"/>
+<line x1="535" y1="14" x2="530" y2="50" class="net-edge-bright" style="animation-delay: 2.6s;"/>
+<line x1="535" y1="14" x2="600" y2="32" class="net-edge-bright" style="animation-delay: 1.7s;"/>
+<line x1="530" y1="50" x2="600" y2="32" class="net-edge" style="animation-delay: 2.3s;"/>
 
-<line x1="600" y1="35" x2="655" y2="12" class="net-edge" style="animation-delay: 2.8s;"/>
-<line x1="600" y1="35" x2="650" y2="58" class="net-edge" style="animation-delay: 2.5s;"/>
-<line x1="655" y1="12" x2="650" y2="58" class="net-edge-bright" style="animation-delay: 3.0s;"/>
-<line x1="655" y1="12" x2="720" y2="35" class="net-edge-bright" style="animation-delay: 2.9s;"/>
-<line x1="650" y1="58" x2="720" y2="35" class="net-edge" style="animation-delay: 3.2s;"/>
+<line x1="600" y1="32" x2="655" y2="10" class="net-edge" style="animation-delay: 2.8s;"/>
+<line x1="600" y1="32" x2="650" y2="54" class="net-edge" style="animation-delay: 2.5s;"/>
+<line x1="655" y1="10" x2="650" y2="54" class="net-edge-bright" style="animation-delay: 3.0s;"/>
+<line x1="655" y1="10" x2="720" y2="32" class="net-edge-bright" style="animation-delay: 2.9s;"/>
+<line x1="650" y1="54" x2="720" y2="32" class="net-edge" style="animation-delay: 3.2s;"/>
 
-<line x1="720" y1="35" x2="775" y2="18" class="net-edge" style="animation-delay: 0.1s;"/>
-<line x1="720" y1="35" x2="770" y2="52" class="net-edge" style="animation-delay: 0.4s;"/>
-<line x1="775" y1="18" x2="770" y2="52" class="net-edge-bright" style="animation-delay: 0.7s;"/>
-<line x1="775" y1="18" x2="840" y2="35" class="net-edge-bright" style="animation-delay: 0.3s;"/>
-<line x1="770" y1="52" x2="840" y2="35" class="net-edge" style="animation-delay: 0.8s;"/>
+<line x1="720" y1="32" x2="775" y2="16" class="net-edge" style="animation-delay: 0.1s;"/>
+<line x1="720" y1="32" x2="770" y2="48" class="net-edge" style="animation-delay: 0.4s;"/>
+<line x1="775" y1="16" x2="770" y2="48" class="net-edge-bright" style="animation-delay: 0.7s;"/>
+<line x1="775" y1="16" x2="840" y2="32" class="net-edge-bright" style="animation-delay: 0.3s;"/>
+<line x1="770" y1="48" x2="840" y2="32" class="net-edge" style="animation-delay: 0.8s;"/>
 
-<line x1="840" y1="35" x2="895" y2="14" class="net-edge" style="animation-delay: 1.2s;"/>
-<line x1="840" y1="35" x2="890" y2="56" class="net-edge" style="animation-delay: 1.5s;"/>
-<line x1="895" y1="14" x2="890" y2="56" class="net-edge-bright" style="animation-delay: 1.7s;"/>
-<line x1="895" y1="14" x2="960" y2="35" class="net-edge-bright" style="animation-delay: 2.0s;"/>
-<line x1="890" y1="56" x2="960" y2="35" class="net-edge" style="animation-delay: 2.2s;"/>
-<line x1="960" y1="35" x2="990" y2="20" class="net-edge" style="animation-delay: 2.5s;"/>
-<line x1="960" y1="35" x2="990" y2="50" class="net-edge" style="animation-delay: 2.7s;"/>
+<line x1="840" y1="32" x2="895" y2="12" class="net-edge" style="animation-delay: 1.2s;"/>
+<line x1="840" y1="32" x2="890" y2="52" class="net-edge" style="animation-delay: 1.5s;"/>
+<line x1="895" y1="12" x2="890" y2="52" class="net-edge-bright" style="animation-delay: 1.7s;"/>
+<line x1="895" y1="12" x2="960" y2="32" class="net-edge-bright" style="animation-delay: 2.0s;"/>
+<line x1="890" y1="52" x2="960" y2="32" class="net-edge" style="animation-delay: 2.2s;"/>
+<line x1="960" y1="32" x2="990" y2="18" class="net-edge" style="animation-delay: 2.5s;"/>
+<line x1="960" y1="32" x2="990" y2="46" class="net-edge" style="animation-delay: 2.7s;"/>
 
-<!-- Nodi Sferici -->
-<circle cx="10" cy="35" r="4" class="net-node-green" style="animation-delay: 0.0s;"/>
-<circle cx="60" cy="15" r="5" class="net-node-cyan" style="animation-delay: 0.3s;"/>
-<circle cx="55" cy="55" r="4" class="net-node-green" style="animation-delay: 0.6s;"/>
-<circle cx="120" cy="35" r="6" class="net-node-cyan" style="animation-delay: 0.2s;"/>
+<circle cx="10" cy="32" r="4" class="net-node-green" style="animation-delay: 0.0s;"/>
+<circle cx="60" cy="12" r="5" class="net-node-cyan" style="animation-delay: 0.3s;"/>
+<circle cx="55" cy="52" r="4" class="net-node-green" style="animation-delay: 0.6s;"/>
+<circle cx="120" cy="32" r="6" class="net-node-cyan" style="animation-delay: 0.2s;"/>
 
-<circle cx="175" cy="12" r="4" class="net-node-green" style="animation-delay: 0.8s;"/>
-<circle cx="170" cy="58" r="4" class="net-node-green" style="animation-delay: 1.0s;"/>
-<circle cx="240" cy="35" r="6" class="net-node-cyan" style="animation-delay: 0.4s;"/>
+<circle cx="175" cy="10" r="4" class="net-node-green" style="animation-delay: 0.8s;"/>
+<circle cx="170" cy="54" r="4" class="net-node-green" style="animation-delay: 1.0s;"/>
+<circle cx="240" cy="32" r="6" class="net-node-cyan" style="animation-delay: 0.4s;"/>
 
-<circle cx="295" cy="18" r="5" class="net-node-cyan" style="animation-delay: 1.4s;"/>
-<circle cx="290" cy="52" r="4" class="net-node-green" style="animation-delay: 1.1s;"/>
-<circle cx="360" cy="35" r="6" class="net-node-cyan" style="animation-delay: 0.7s;"/>
+<circle cx="295" cy="16" r="5" class="net-node-cyan" style="animation-delay: 1.4s;"/>
+<circle cx="290" cy="48" r="4" class="net-node-green" style="animation-delay: 1.1s;"/>
+<circle cx="360" cy="32" r="6" class="net-node-cyan" style="animation-delay: 0.7s;"/>
 
-<circle cx="415" cy="10" r="4" class="net-node-green" style="animation-delay: 1.8s;"/>
-<circle cx="410" cy="60" r="5" class="net-node-cyan" style="animation-delay: 2.0s;"/>
-<circle cx="480" cy="35" r="6" class="net-node-cyan" style="animation-delay: 1.5s;"/>
+<circle cx="415" cy="8" r="4" class="net-node-green" style="animation-delay: 1.8s;"/>
+<circle cx="410" cy="56" r="5" class="net-node-cyan" style="animation-delay: 2.0s;"/>
+<circle cx="480" cy="32" r="6" class="net-node-cyan" style="animation-delay: 1.5s;"/>
 
-<circle cx="535" cy="16" r="4" class="net-node-green" style="animation-delay: 2.4s;"/>
-<circle cx="530" cy="54" r="4" class="net-node-green" style="animation-delay: 2.1s;"/>
-<circle cx="600" cy="35" r="6" class="net-node-cyan" style="animation-delay: 1.7s;"/>
+<circle cx="535" cy="14" r="4" class="net-node-green" style="animation-delay: 2.4s;"/>
+<circle cx="530" cy="50" r="4" class="net-node-green" style="animation-delay: 2.1s;"/>
+<circle cx="600" cy="32" r="6" class="net-node-cyan" style="animation-delay: 1.7s;"/>
 
-<circle cx="655" cy="12" r="5" class="net-node-cyan" style="animation-delay: 2.8s;"/>
-<circle cx="650" cy="58" r="4" class="net-node-green" style="animation-delay: 2.5s;"/>
-<circle cx="720" cy="35" r="6" class="net-node-cyan" style="animation-delay: 2.9s;"/>
+<circle cx="655" cy="10" r="5" class="net-node-cyan" style="animation-delay: 2.8s;"/>
+<circle cx="650" cy="54" r="4" class="net-node-green" style="animation-delay: 2.5s;"/>
+<circle cx="720" cy="32" r="6" class="net-node-cyan" style="animation-delay: 2.9s;"/>
 
-<circle cx="775" cy="18" r="4" class="net-node-green" style="animation-delay: 0.1s;"/>
-<circle cx="770" cy="52" r="4" class="net-node-green" style="animation-delay: 0.4s;"/>
-<circle cx="840" cy="35" r="6" class="net-node-cyan" style="animation-delay: 0.3s;"/>
+<circle cx="775" cy="16" r="4" class="net-node-green" style="animation-delay: 0.1s;"/>
+<circle cx="770" cy="48" r="4" class="net-node-green" style="animation-delay: 0.4s;"/>
+<circle cx="840" cy="32" r="6" class="net-node-cyan" style="animation-delay: 0.3s;"/>
 
-<circle cx="895" cy="14" r="5" class="net-node-cyan" style="animation-delay: 1.2s;"/>
-<circle cx="890" cy="56" r="4" class="net-node-green" style="animation-delay: 1.5s;"/>
-<circle cx="960" cy="35" r="6" class="net-node-cyan" style="animation-delay: 2.0s;"/>
-<circle cx="990" cy="20" r="3" class="net-node-green" style="animation-delay: 2.5s;"/>
-<circle cx="990" cy="50" r="3" class="net-node-green" style="animation-delay: 2.7s;"/>
+<circle cx="895" cy="12" r="5" class="net-node-cyan" style="animation-delay: 1.2s;"/>
+<circle cx="890" cy="52" r="4" class="net-node-green" style="animation-delay: 1.5s;"/>
+<circle cx="960" cy="32" r="6" class="net-node-cyan" style="animation-delay: 2.0s;"/>
+<circle cx="990" cy="18" r="3" class="net-node-green" style="animation-delay: 2.5s;"/>
+<circle cx="990" cy="46" r="3" class="net-node-green" style="animation-delay: 2.7s;"/>
 </svg>
 </div>
 </div>""",
