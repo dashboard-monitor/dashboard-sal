@@ -1653,19 +1653,6 @@ st.markdown(
     object-fit: cover;
     display: block;
 }
-.tech-card-label {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 100%);
-    color: #ffffff;
-    font-size: 0.62rem;
-    font-weight: 700;
-    padding: 12px 4px 3px 4px;
-    text-align: center;
-    letter-spacing: 0.3px;
-}
 </style>
 <div style="background: linear-gradient(90deg, rgba(22, 125, 62, 0.14) 0%, rgba(10, 40, 70, 0.08) 100%); border-left: 4px solid #167D3E; padding: 16px 20px 10px 20px; border-radius: 12px; margin-top: 8px; margin-bottom: 22px; box-shadow: 0px 4px 12px rgba(0,0,0,0.05); overflow: hidden;">
 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 12px;">
@@ -1676,20 +1663,16 @@ st.markdown(
 </div>
 <div class="tech-card-container">
 <div class="tech-card">
-<img src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=250&q=80" alt="Robotica 4.0">
-<div class="tech-card-label">Robotica 4.0</div>
+<img src="https://images.unsplash.com/photo-1581092335397-9583fe92d232?auto=format&fit=crop&w=250&q=80" alt="Smart Automation">
 </div>
 <div class="tech-card">
-<img src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=250&q=80" alt="IA & Uomo">
-<div class="tech-card-label">IA & Uomo</div>
+<img src="https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&w=250&q=80" alt="AI Human Connection">
 </div>
 <div class="tech-card">
 <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=250&q=80" alt="Analytics">
-<div class="tech-card-label">Analytics</div>
 </div>
 <div class="tech-card">
 <img src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=250&q=80" alt="Cloud IoT">
-<div class="tech-card-label">Cloud IoT</div>
 </div>
 </div>
 </div>
