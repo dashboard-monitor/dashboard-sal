@@ -2179,7 +2179,25 @@ elif vista == "Saturazione & Capacità":
     else:
         team_cap_sel = ["EPAL", "MGIO"]
 
-    # 2. Filtro Progetto
+    # 2. Slider di Scorrimento Temporale (Da Mese X a Mese Y)
+    periodi_ordinati = (
+        df_tot_mon.sort_values("SORT_KEY")["PERIODO"].unique().tolist()
+    )
+
+    if periodi_ordinati:
+        periodo_range = st.sidebar.select_slider(
+            "Intervallo Temporale",
+            options=periodi_ordinati,
+            value=(periodi_ordinati[0], periodi_ordinati[-1]),
+            key="periodo_range_sat",
+        )
+        idx_inizio = periodi_ordinati.index(periodo_range[0])
+        idx_fine = periodi_ordinati.index(periodo_range[1])
+        periodi_sel = periodi_ordinati[idx_inizio : idx_fine + 1]
+    else:
+        periodi_sel = []
+
+    # 3. Filtro Progetto
     progetto_cap_sel = st.sidebar.multiselect(
         "Isola singole Commesse",
         options=sorted(df_db_mon["PROGETTO"].unique()),
@@ -2187,16 +2205,21 @@ elif vista == "Saturazione & Capacità":
         key="progetto_cap_sel",
     )
 
-    # Filtraggio dati
-    df_db_filt = df_db_mon[df_db_mon["TEAM"].isin(team_cap_sel)].copy()
+    # Filtraggio dati basato su Team, Intervallo Temporale e Progetto
+    df_tot_filt = df_tot_mon[
+        (df_tot_mon["TEAM"].isin(team_cap_sel))
+        & (df_tot_mon["PERIODO"].isin(periodi_sel))
+    ].sort_values("SORT_KEY")
+
+    df_db_filt = df_db_mon[
+        (df_db_mon["TEAM"].isin(team_cap_sel))
+        & (df_db_mon["PERIODO"].isin(periodi_sel))
+    ].copy()
+
     if progetto_cap_sel:
         df_db_filt = df_db_filt[
             df_db_filt["PROGETTO"].isin(progetto_cap_sel)
         ].copy()
-
-    df_tot_filt = df_tot_mon[df_tot_mon["TEAM"].isin(team_cap_sel)].sort_values(
-        "SORT_KEY"
-    )
 
     st.subheader("📅 Consuntivo Lavorato Mensile Team & Commesse")
     st.markdown(
@@ -2215,7 +2238,7 @@ elif vista == "Saturazione & Capacità":
         tot_mgio = df_tot_filt[df_tot_filt["TEAM"] == "MGIO"][
             "GIORNI_LAVORATI_UFFICIALI"
         ].sum()
-        tot_complessivo = df_tot_mon.drop_duplicates(subset=["PERIODO"])[
+        tot_complessivo = df_tot_filt.drop_duplicates(subset=["PERIODO"])[
             "TOTALE_MESE"
         ].sum()
 
@@ -2303,16 +2326,14 @@ elif vista == "Saturazione & Capacità":
 
     st.markdown("---")
 
-    # GRAFICI 3 & 4: Scomposizione per Commessa (OTTIMIZZATI)
+    # GRAFICI 3 & 4: Scomposizione per Commessa
     st.markdown("### 🧩 Allocazione Lavoro per Commessa")
 
     col_mon_left, col_mon_right = st.columns([2, 1])
 
-    # Preparazione ordinamento mensile categorico
     df_db_sorted = df_db_filt.sort_values("SORT_KEY").copy()
     ordine_mesi = df_db_sorted["PERIODO"].unique().tolist()
 
-    # Raggruppamento Smart: Top 6 Progetti + "Altri Progetti"
     top_commesse = (
         df_db_filt.groupby("PROGETTO")["GIORNI"]
         .sum()
