@@ -725,7 +725,6 @@ def estrai_dati_monitor_mensile(fogli):
     if df_mon.empty:
         return None, None
 
-    # Helper per estrarre Mese Nome, Mese Num e Anno in modo sicuro
     def parsing_mese_anno(val_m, val_a_raw):
         if pd.isna(val_m):
             return "", 0, 2025
@@ -764,7 +763,7 @@ def estrai_dati_monitor_mensile(fogli):
 
         return m_nome, m_num, anno
 
-    # 1. Dettaglio Analitico Attività (Colonne A:G -> indici 0:7)
+    # 1. Dettaglio Analitico Attività (Colonne A:G)
     df_db = df_mon.iloc[:, :7].copy()
     df_db.columns = ["ANNO_RAW", "MESE", "PROGETTO", "TEAM", "ATTIVITÀ", "MINUTI", "GIORNI"]
 
@@ -783,11 +782,9 @@ def estrai_dati_monitor_mensile(fogli):
     df_db["SORT_KEY"] = df_db["ANNO"] * 100 + df_db["MESE_NUM"]
     df_db["PERIODO"] = df_db["MESE_NOME"].str.capitalize() + " " + df_db["ANNO"].astype(str)
 
-    # 2. Riepilogo Ufficiale Giorni Interi Lavorati (Colonne K:O -> indici 10 a 15 esclusi)
-    # Assicuriamo che Python prenda esattamente le colonne 10(K), 11(L), 12(M), 13(N), 14(O)
-    if df_mon.shape[1] >= 15:
-        # Peschiamo i dati saltando la riga di intestazione se contiene parole chiave
-        df_tot_sub = df_mon.iloc[:, 10:15].copy()
+    # 2. Riepilogo Ufficiale Giorni Interi Lavorati (Colonne J:N -> indici 9 a 14)
+    if df_mon.shape[1] >= 14:
+        df_tot_sub = df_mon.iloc[:, 9:14].copy()
         df_tot_sub.columns = ["ANNO_C", "MESE_C", "EPAL", "MGIO", "TOTALE_MESE"]
 
         df_tot_sub["EPAL"] = serie_numerica(df_tot_sub["EPAL"])
@@ -807,8 +804,6 @@ def estrai_dati_monitor_mensile(fogli):
             value_name="GIORNI_LAVORATI_UFFICIALI",
         )
         df_tot_long["TEAM"] = df_tot_long["TEAM"].astype(str).str.strip().str.upper()
-
-        # Pulizia zeri (ignora righe vuote o in cui il numero non è leggibile)
         df_tot_long = df_tot_long.dropna(subset=["GIORNI_LAVORATI_UFFICIALI"])
 
         parsed_tot = [parsing_mese_anno(m, a) for m, a in zip(df_tot_long["MESE_C"], df_tot_long["ANNO_C"])]
@@ -816,9 +811,7 @@ def estrai_dati_monitor_mensile(fogli):
         df_tot_long["MESE_NUM"] = [p[1] for p in parsed_tot]
         df_tot_long["ANNO"] = [p[2] for p in parsed_tot]
 
-        # Rimuove le righe in cui non è stato riconosciuto un mese valido
         df_tot_long = df_tot_long[df_tot_long["MESE_NUM"] > 0]
-
         df_tot_long["SORT_KEY"] = df_tot_long["ANNO"] * 100 + df_tot_long["MESE_NUM"]
         df_tot_long["PERIODO"] = df_tot_long["MESE_NOME"].str.capitalize() + " " + df_tot_long["ANNO"].astype(str)
     else:
