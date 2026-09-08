@@ -725,6 +725,71 @@ def estrai_dati_monitor_mensile(fogli):
     if df_mon.empty:
         return None, None
 
+    # Helper per estrarre Mese Nome, Mese Num e Anno in modo sicuro anche da Timestamp Excel
+    def parsing_mese_anno(val_m, val_a_raw):
+        if pd.isna(val_m):
+            return "", 0, 2025
+
+        if isinstance(val_m, (datetime, pd.Timestamp)):
+            m_num = val_m.month
+            anno = val_m.year
+            mesi_inv = {
+                9: "settembre",
+                10: "ottobre",
+                11: "novembre",
+                12: "dicembre",
+                1: "gennaio",
+                2: "febbraio",
+                3: "marzo",
+                4: "aprile",
+                5: "maggio",
+                6: "giugno",
+                7: "luglio",
+                8: "agosto",
+            }
+            return mesi_inv.get(m_num, ""), m_num, anno
+
+        s = str(val_m).strip().lower()
+        if re.match(r"^\d{4}-\d{2}-\d{2}", s):
+            try:
+                dt = pd.to_datetime(s)
+                mesi_inv = {
+                    9: "settembre",
+                    10: "ottobre",
+                    11: "novembre",
+                    12: "dicembre",
+                    1: "gennaio",
+                    2: "febbraio",
+                    3: "marzo",
+                    4: "aprile",
+                    5: "maggio",
+                    6: "giugno",
+                    7: "luglio",
+                    8: "agosto",
+                }
+                return mesi_inv.get(dt.month, ""), dt.month, dt.year
+            except Exception:
+                pass
+
+        match_year = re.search(r"\b(20\d{2})\b", s)
+        if match_year:
+            anno = int(match_year.group(1))
+        else:
+            try:
+                anno = int(float(str(val_a_raw)))
+            except Exception:
+                anno = 2025
+
+        m_nome = ""
+        m_num = 0
+        for nome, num in MESI_ORDINE.items():
+            if nome in s:
+                m_nome = nome
+                m_num = num
+                break
+
+        return m_nome, m_num, anno
+
     # 1. Dettaglio Analitico Attività (Colonne A:G)
     df_db = df_mon.iloc[:, :7].copy()
     df_db.columns = [
@@ -747,24 +812,15 @@ def estrai_dati_monitor_mensile(fogli):
         & (~df_db["PROGETTO"].str.lower().isin(["nan", "none", "totale", ""]))
     ].copy()
 
-    anno_estratto = (
-        df_db["MESE"].astype(str).str.extract(r"(\d{4})")[0].astype(float)
-    )
-    anno_diretto = serie_numerica(df_db["ANNO_RAW"])
-    df_db["ANNO"] = (
-        anno_diretto.fillna(anno_estratto).fillna(2025).astype(int)
-    )
+    parsed_db = [
+        parsing_mese_anno(m, a)
+        for m, a in zip(df_db["MESE"], df_db["ANNO_RAW"])
+    ]
+    df_db["MESE_NOME"] = [p[0] for p in parsed_db]
+    df_db["MESE_NUM"] = [p[1] for p in parsed_db]
+    df_db["ANNO"] = [p[2] for p in parsed_db]
 
-    df_db["MESE_NOME"] = (
-        df_db["MESE"]
-        .astype(str)
-        .str.replace(r"\d+", "", regex=True)
-        .str.replace(r"\(in corso\)", "", regex=True)
-        .str.strip()
-        .str.lower()
-    )
-    df_db["MESE_NUM"] = df_db["MESE_NOME"].map(MESI_ORDINE)
-    df_db["SORT_KEY"] = df_db["ANNO"] * 100 + df_db["MESE_NUM"].fillna(0)
+    df_db["SORT_KEY"] = df_db["ANNO"] * 100 + df_db["MESE_NUM"]
     df_db["PERIODO"] = (
         df_db["MESE_NOME"].str.capitalize() + " " + df_db["ANNO"].astype(str)
     )
@@ -778,20 +834,8 @@ def estrai_dati_monitor_mensile(fogli):
         df_tot_sub["MGIO"] = serie_numerica(df_tot_sub["MGIO"])
         df_tot_sub["TOTALE_MESE"] = serie_numerica(df_tot_sub["TOTALE_MESE"])
 
-        anno_c_estratto = (
-            df_tot_sub["MESE_C"]
-            .astype(str)
-            .str.extract(r"(\d{4})")[0]
-            .astype(float)
-        )
-        anno_c_diretto = serie_numerica(df_tot_sub["ANNO_C"])
-        df_tot_sub["ANNO"] = (
-            anno_c_diretto.fillna(anno_c_estratto).fillna(0).astype(int)
-        )
-
         df_tot_raw = df_tot_sub[
-            (df_tot_sub["ANNO"] >= 2020)
-            & (df_tot_sub["MESE_C"].notna())
+            (df_tot_sub["MESE_C"].notna())
             & (
                 ~df_tot_sub["MESE_C"]
                 .astype(str)
@@ -801,7 +845,7 @@ def estrai_dati_monitor_mensile(fogli):
         ].copy()
 
         df_tot_long = df_tot_raw.melt(
-            id_vars=["ANNO", "MESE_C", "TOTALE_MESE"],
+            id_vars=["ANNO_C", "MESE_C", "TOTALE_MESE"],
             value_vars=["EPAL", "MGIO"],
             var_name="TEAM",
             value_name="GIORNI_LAVORATI_UFFICIALI",
@@ -809,17 +853,17 @@ def estrai_dati_monitor_mensile(fogli):
         df_tot_long["TEAM"] = (
             df_tot_long["TEAM"].astype(str).str.strip().str.upper()
         )
-        df_tot_long["MESE_NOME"] = (
-            df_tot_long["MESE_C"]
-            .astype(str)
-            .str.replace(r"\d+", "", regex=True)
-            .str.replace(r"\(in corso\)", "", regex=True)
-            .str.strip()
-            .str.lower()
-        )
-        df_tot_long["MESE_NUM"] = df_tot_long["MESE_NOME"].map(MESI_ORDINE)
+
+        parsed_tot = [
+            parsing_mese_anno(m, a)
+            for m, a in zip(df_tot_long["MESE_C"], df_tot_long["ANNO_C"])
+        ]
+        df_tot_long["MESE_NOME"] = [p[0] for p in parsed_tot]
+        df_tot_long["MESE_NUM"] = [p[1] for p in parsed_tot]
+        df_tot_long["ANNO"] = [p[2] for p in parsed_tot]
+
         df_tot_long["SORT_KEY"] = (
-            df_tot_long["ANNO"] * 100 + df_tot_long["MESE_NUM"].fillna(0)
+            df_tot_long["ANNO"] * 100 + df_tot_long["MESE_NUM"]
         )
         df_tot_long["PERIODO"] = (
             df_tot_long["MESE_NOME"].str.capitalize()
@@ -2179,7 +2223,7 @@ elif vista == "Saturazione & Capacità":
     else:
         team_cap_sel = ["EPAL", "MGIO"]
 
-    # 2. Slider di Scorrimento Temporale (Dinamico)
+    # 2. Slider di Scorrimento Temporale Dinamico
     periodi_ordinati = (
         df_tot_mon.sort_values("SORT_KEY")["PERIODO"].unique().tolist()
     )
@@ -2205,7 +2249,7 @@ elif vista == "Saturazione & Capacità":
         key="progetto_cap_sel",
     )
 
-    # Filtraggio dati
+    # Filtraggio Dati
     df_tot_filt = df_tot_mon[
         (df_tot_mon["TEAM"].isin(team_cap_sel))
         & (df_tot_mon["PERIODO"].isin(periodi_sel))
@@ -2336,7 +2380,7 @@ elif vista == "Saturazione & Capacità":
     else:
         col_mon_left, col_mon_right = st.columns([2, 1])
 
-        # Raggruppamento Mese x Progetto per individuare le Top 3 di ciascun mese
+        # Raggruppamento Mese x Progetto
         df_m_p = (
             df_db_filt.groupby(
                 ["PERIODO", "SORT_KEY", "PROGETTO"], as_index=False
@@ -2344,12 +2388,11 @@ elif vista == "Saturazione & Capacità":
             .sum()
         )
 
-        # Ranking delle commesse mese per mese
+        # Ranking dinamico per isolare le Top 3 commesse di OGNI singolo mese
         df_m_p["RANK_MESE"] = df_m_p.groupby("PERIODO")["GIORNI"].rank(
             method="first", ascending=False
         )
 
-        # Mantiene il nome solo se tra le prime 3 del mese, altrimenti accorpa in 'Altri Progetti'
         df_m_p["COMMESSA_DISPLAY"] = df_m_p.apply(
             lambda r: r["PROGETTO"]
             if r["RANK_MESE"] <= 3
@@ -2357,11 +2400,10 @@ elif vista == "Saturazione & Capacità":
             axis=1,
         )
 
-        # Aggregazione finale per il grafico a barre
         df_top3_mensile = (
-            df_m_p.groupby(["PERIODO", "SORT_KEY", "COMMESSA_DISPLAY"], as_index=False)[
-                "GIORNI"
-            ]
+            df_m_p.groupby(
+                ["PERIODO", "SORT_KEY", "COMMESSA_DISPLAY"], as_index=False
+            )["GIORNI"]
             .sum()
             .sort_values("SORT_KEY")
         )
