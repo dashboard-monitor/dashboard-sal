@@ -2202,13 +2202,12 @@ if vista == "Executive":
     tabella_portafoglio(port_ord)
     st.download_button("⬇️ Scarica CSV", data=csv_bytes(port_ord), file_name=f"portfolio_{scope}.csv", mime="text/csv")
 
-elif vista == "Saturazione & Capacità":
-    df_db_mon, df_tot_mon = estrai_dati_monitor_mensile(fogli)
+elif vista == "Effort & Carico di Lavoro":
+    df_db_mon, _ = estrai_dati_monitor_mensile(fogli)
 
-    if df_db_mon is None or df_tot_mon is None or df_tot_mon.empty:
+    if df_db_mon is None or df_db_mon.empty:
         st.warning(
-            "⚠️ Foglio `MINDS_MONITOR_MENSILE` non individuato o incompleto"
-            " nel file sorgente."
+            "⚠️ Foglio `MINDS_MONITOR_MENSILE` non individuato o privo di dati validi."
         )
         st.stop()
 
@@ -2223,9 +2222,9 @@ elif vista == "Saturazione & Capacità":
     else:
         team_cap_sel = ["EPAL", "MGIO"]
 
-    # 2. Slider di Scorrimento Temporale Dinamico
+    # 2. Slider di Scorrimento Temporale
     periodi_ordinati = (
-        df_tot_mon.sort_values("SORT_KEY")["PERIODO"].unique().tolist()
+        df_db_mon.sort_values("SORT_KEY")["PERIODO"].unique().tolist()
     )
 
     if periodi_ordinati:
@@ -2249,12 +2248,7 @@ elif vista == "Saturazione & Capacità":
         key="progetto_cap_sel",
     )
 
-    # Filtraggio Dati
-    df_tot_filt = df_tot_mon[
-        (df_tot_mon["TEAM"].isin(team_cap_sel))
-        & (df_tot_mon["PERIODO"].isin(periodi_sel))
-    ].sort_values("SORT_KEY")
-
+    # Filtraggio Dati Base
     df_db_filt = df_db_mon[
         (df_db_mon["TEAM"].isin(team_cap_sel))
         & (df_db_mon["PERIODO"].isin(periodi_sel))
@@ -2265,11 +2259,10 @@ elif vista == "Saturazione & Capacità":
             df_db_filt["PROGETTO"].isin(progetto_cap_sel)
         ].copy()
 
-    st.subheader("📅 Consuntivo Lavorato Mensile Team & Commesse")
+    st.subheader("📅 Consuntivo Effort & Carico di Lavoro Mensile")
     st.markdown(
-        "Monitoraggio delle giornate lavorate trasversali per team con linea"
-        " di tendenza, scomposizione analitica per commessa e registro log"
-        " attività."
+        "Monitoraggio delle giornate lavorate trasversali per team calcolate "
+        "direttamente come **somma dei giorni interi lavorati effettivi**."
     )
 
     # KPI SUMMARY CARDS DINAMICHE
@@ -2277,44 +2270,44 @@ elif vista == "Saturazione & Capacità":
     cols = st.columns(3 if num_teams == 2 else [1, 2])
 
     if num_teams == 2:
-        tot_epal = df_tot_filt[df_tot_filt["TEAM"] == "EPAL"][
-            "GIORNI_LAVORATI_UFFICIALI"
-        ].sum()
-        tot_mgio = df_tot_filt[df_tot_filt["TEAM"] == "MGIO"][
-            "GIORNI_LAVORATI_UFFICIALI"
-        ].sum()
-        tot_complessivo = df_tot_filt.drop_duplicates(subset=["PERIODO"])[
-            "TOTALE_MESE"
-        ].sum()
+        tot_epal = df_db_filt[df_db_filt["TEAM"] == "EPAL"]["GIORNI"].sum()
+        tot_mgio = df_db_filt[df_db_filt["TEAM"] == "MGIO"]["GIORNI"].sum()
+        tot_complessivo = df_db_filt["GIORNI"].sum()
 
-        cols[0].metric("Totale Effettivo EPAL", f"{tot_epal:.1f} gg")
-        cols[1].metric("Totale Effettivo MGIO", f"{tot_mgio:.1f} gg")
+        cols[0].metric("Giorni Interi EPAL", f"{tot_epal:.1f} gg")
+        cols[1].metric("Giorni Interi MGIO", f"{tot_mgio:.1f} gg")
         cols[2].metric("Totale Complessivo", f"{tot_complessivo:.1f} gg")
     else:
         team_singolo = team_cap_sel[0]
-        tot_singolo = df_tot_filt["GIORNI_LAVORATI_UFFICIALI"].sum()
+        tot_singolo = df_db_filt["GIORNI"].sum()
         cols[0].metric(
-            f"Totale Effettivo {team_singolo}", f"{tot_singolo:.1f} gg"
+            f"Giorni Interi {team_singolo}", f"{tot_singolo:.1f} gg"
         )
 
     st.markdown("---")
 
-    # GRAFICI 1 & 2 AFFIANCATI: Volumi (Bar) e Andamento (Linee)
-    st.markdown("### 📊 Volumi Mensili e Trend di Erogazione")
+    df_trend_mensile = (
+        df_db_filt.groupby(["PERIODO", "SORT_KEY", "TEAM"], as_index=False)["GIORNI"]
+        .sum()
+        .sort_values("SORT_KEY")
+    )
+
+    # GRAFICI 1 & 2: Volumi e Trend
+    st.markdown("### 📊 Volumi Mensili e Trend dei Giorni Interi Lavorati")
 
     col_chart1, col_chart2 = st.columns(2)
 
     with col_chart1:
         fig_mon_bar = go.Figure()
         for team_name in team_cap_sel:
-            df_t = df_tot_filt[df_tot_filt["TEAM"] == team_name]
+            df_t = df_trend_mensile[df_trend_mensile["TEAM"] == team_name]
             fig_mon_bar.add_trace(
                 go.Bar(
                     x=df_t["PERIODO"],
-                    y=df_t["GIORNI_LAVORATI_UFFICIALI"],
+                    y=df_t["GIORNI"],
                     name=f"{team_name}",
                     marker_color=COLORI_TEAM.get(team_name, "#2563EB"),
-                    text=df_t["GIORNI_LAVORATI_UFFICIALI"].round(1),
+                    text=df_t["GIORNI"].round(1),
                     textposition="auto",
                 )
             )
@@ -2324,7 +2317,7 @@ elif vista == "Saturazione & Capacità":
             height=400,
             hovermode="x unified",
             xaxis_title="Periodo Mensile",
-            yaxis_title="Giorni Lavorati",
+            yaxis_title="Giorni Interi Lavorati",
             title="Volumi (Istogramma)",
             legend=dict(
                 orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
@@ -2338,11 +2331,11 @@ elif vista == "Saturazione & Capacità":
     with col_chart2:
         fig_mon_line = go.Figure()
         for team_name in team_cap_sel:
-            df_t = df_tot_filt[df_tot_filt["TEAM"] == team_name]
+            df_t = df_trend_mensile[df_trend_mensile["TEAM"] == team_name]
             fig_mon_line.add_trace(
                 go.Scatter(
                     x=df_t["PERIODO"],
-                    y=df_t["GIORNI_LAVORATI_UFFICIALI"],
+                    y=df_t["GIORNI"],
                     name=f"Trend {team_name}",
                     mode="lines+markers",
                     line=dict(
@@ -2358,8 +2351,8 @@ elif vista == "Saturazione & Capacità":
             height=400,
             hovermode="x unified",
             xaxis_title="Periodo Mensile",
-            yaxis_title="Giorni Lavorati",
-            title="Andamento Storico (Curva di Tendenza)",
+            yaxis_title="Giorni Interi Lavorati",
+            title="Andamento Storico (Linea di Tendenza)",
             legend=dict(
                 orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
             ),
@@ -2371,8 +2364,8 @@ elif vista == "Saturazione & Capacità":
 
     st.markdown("---")
 
-    # GRAFICI 3 & 4: Allocazione Lavoro per Commessa
-    st.markdown("### 🧩 Allocazione Lavoro per Commessa")
+    # GRAFICI 3 & 4: Allocazione Effort per Commessa
+    st.markdown("### 🧩 Allocazione Effort per Commessa")
 
     if df_db_filt.empty:
         st.info(
@@ -2381,7 +2374,6 @@ elif vista == "Saturazione & Capacità":
     else:
         col_mon_left, col_mon_right = st.columns([2, 1])
 
-        # Raggruppamento Mese x Progetto
         df_m_p = (
             df_db_filt.groupby(
                 ["PERIODO", "SORT_KEY", "PROGETTO"], as_index=False
@@ -2389,7 +2381,6 @@ elif vista == "Saturazione & Capacità":
             .sum()
         )
 
-        # Ranking dinamico per isolare le Top 3 commesse di OGNI singolo mese
         df_m_p["RANK_MESE"] = df_m_p.groupby("PERIODO")["GIORNI"].rank(
             method="first", ascending=False
         )
@@ -2418,8 +2409,7 @@ elif vista == "Saturazione & Capacità":
                 y="GIORNI",
                 color="COMMESSA_DISPLAY",
                 title=(
-                    "Scomposizione Mensile Giorni Lavorati (Top 3 Commesse per"
-                    " Mese)"
+                    "Scomposizione Mensile Giorni Interi Lavorati (Top 3 Commesse per Mese)"
                 ),
                 barmode="stack",
                 category_orders={"PERIODO": ordine_mesi},
@@ -2427,7 +2417,7 @@ elif vista == "Saturazione & Capacità":
                 height=480,
             )
             fig_mon_proj.update_xaxes(type="category", title="Periodo Mensile")
-            fig_mon_proj.update_yaxes(title="Giorni Lavorati")
+            fig_mon_proj.update_yaxes(title="Giorni Interi Lavorati")
             fig_mon_proj.update_layout(
                 legend_title_text="Commessa",
                 legend=dict(
@@ -2453,7 +2443,7 @@ elif vista == "Saturazione & Capacità":
                 df_top_p,
                 names="PROGETTO",
                 values="GIORNI",
-                title="Distribuzione Giorni Totali per Commessa",
+                title="Distribuzione & Quota Effort per Commessa",
                 hole=0.45,
                 template="plotly_white",
                 height=480,
@@ -2461,6 +2451,50 @@ elif vista == "Saturazione & Capacità":
             st.plotly_chart(
                 fig_mon_pie, use_container_width=True, config=PLOTLY_CONFIG
             )
+
+        st.markdown("---")
+        st.markdown("### 📋 Registro Dettagliato Attività per Mese")
+
+        df_tab_dettaglio = (
+            df_db_filt[
+                [
+                    "PERIODO",
+                    "PROGETTO",
+                    "TEAM",
+                    "ATTIVITÀ",
+                    "MINUTI",
+                    "GIORNI",
+                    "SORT_KEY",
+                ]
+            ]
+            .sort_values(["SORT_KEY", "PROGETTO", "TEAM"])
+            .drop(columns=["SORT_KEY"])
+        )
+
+        st.dataframe(
+            df_tab_dettaglio,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "PERIODO": st.column_config.TextColumn("Mese / Anno"),
+                "PROGETTO": st.column_config.TextColumn("Progetto / Commessa"),
+                "TEAM": st.column_config.TextColumn("Team"),
+                "ATTIVITÀ": st.column_config.TextColumn("Attività Svolta"),
+                "MINUTI": st.column_config.NumberColumn(
+                    "Minuti", format="%d min"
+                ),
+                "GIORNI": st.column_config.NumberColumn(
+                    "Giorni Interi Lavorati", format="%.2f gg"
+                ),
+            },
+        )
+
+        st.download_button(
+            "⬇️ Scarica Registro Attività (CSV)",
+            data=csv_bytes(df_tab_dettaglio),
+            file_name=f"registro_attivita_mensili_{scope}.csv",
+            mime="text/csv",
+        )
 
         # ==========================================
         # TABELLA DI DETTAGLIO ATTIVITÀ MESE PER MESE
