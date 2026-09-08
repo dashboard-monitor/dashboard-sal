@@ -2268,7 +2268,8 @@ elif vista == "Saturazione & Capacità":
     st.subheader("📅 Consuntivo Lavorato Mensile Team & Commesse")
     st.markdown(
         "Monitoraggio delle giornate lavorate trasversali per team con linea"
-        " di tendenza e scomposizione analitica per singola commessa."
+        " di tendenza, scomposizione analitica per commessa e registro log"
+        " attività."
     )
 
     # KPI SUMMARY CARDS DINAMICHE
@@ -2370,7 +2371,7 @@ elif vista == "Saturazione & Capacità":
 
     st.markdown("---")
 
-    # GRAFICI 3 & 4: Allocazione Lavoro per Commessa (Top 3 Mese per Mese)
+    # GRAFICI 3 & 4: Allocazione Lavoro per Commessa
     st.markdown("### 🧩 Allocazione Lavoro per Commessa")
 
     if df_db_filt.empty:
@@ -2460,6 +2461,53 @@ elif vista == "Saturazione & Capacità":
             st.plotly_chart(
                 fig_mon_pie, use_container_width=True, config=PLOTLY_CONFIG
             )
+
+        # ==========================================
+        # TABELLA DI DETTAGLIO ATTIVITÀ MESE PER MESE
+        # ==========================================
+        st.markdown("---")
+        st.markdown("### 📋 Registro Dettagliato Attività per Mese")
+
+        df_tab_dettaglio = (
+            df_db_filt[
+                [
+                    "PERIODO",
+                    "PROGETTO",
+                    "TEAM",
+                    "ATTIVITÀ",
+                    "MINUTI",
+                    "GIORNI",
+                    "SORT_KEY",
+                ]
+            ]
+            .sort_values(["SORT_KEY", "PROGETTO", "TEAM"])
+            .drop(columns=["SORT_KEY"])
+        )
+
+        st.dataframe(
+            df_tab_dettaglio,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "PERIODO": st.column_config.TextColumn("Mese / Anno"),
+                "PROGETTO": st.column_config.TextColumn("Progetto / Commessa"),
+                "TEAM": st.column_config.TextColumn("Team"),
+                "ATTIVITÀ": st.column_config.TextColumn("Attività Svolta"),
+                "MINUTI": st.column_config.NumberColumn(
+                    "Minuti", format="%d min"
+                ),
+                "GIORNI": st.column_config.NumberColumn(
+                    "Giorni Lavorati", format="%.2f gg"
+                ),
+            },
+        )
+
+        st.download_button(
+            "⬇️ Scarica Registro Attività (CSV)",
+            data=csv_bytes(df_tab_dettaglio),
+            file_name=f"registro_attivita_mensili_{scope}.csv",
+            mime="text/csv",
+        )
 
 elif vista == "Avanzamento":
     if portfolio_filtrato.empty:
