@@ -725,7 +725,7 @@ def estrai_dati_monitor_mensile(fogli):
     if df_mon.empty:
         return None, None
 
-    # Helper per estrarre Mese Nome, Mese Num e Anno in modo sicuro anche da Timestamp Excel
+    # Helper per estrarre Mese Nome, Mese Num e Anno in modo sicuro
     def parsing_mese_anno(val_m, val_a_raw):
         if pd.isna(val_m):
             return "", 0, 2025
@@ -733,40 +733,14 @@ def estrai_dati_monitor_mensile(fogli):
         if isinstance(val_m, (datetime, pd.Timestamp)):
             m_num = val_m.month
             anno = val_m.year
-            mesi_inv = {
-                9: "settembre",
-                10: "ottobre",
-                11: "novembre",
-                12: "dicembre",
-                1: "gennaio",
-                2: "febbraio",
-                3: "marzo",
-                4: "aprile",
-                5: "maggio",
-                6: "giugno",
-                7: "luglio",
-                8: "agosto",
-            }
+            mesi_inv = {9: "settembre", 10: "ottobre", 11: "novembre", 12: "dicembre", 1: "gennaio", 2: "febbraio", 3: "marzo", 4: "aprile", 5: "maggio", 6: "giugno", 7: "luglio", 8: "agosto"}
             return mesi_inv.get(m_num, ""), m_num, anno
 
         s = str(val_m).strip().lower()
         if re.match(r"^\d{4}-\d{2}-\d{2}", s):
             try:
                 dt = pd.to_datetime(s)
-                mesi_inv = {
-                    9: "settembre",
-                    10: "ottobre",
-                    11: "novembre",
-                    12: "dicembre",
-                    1: "gennaio",
-                    2: "febbraio",
-                    3: "marzo",
-                    4: "aprile",
-                    5: "maggio",
-                    6: "giugno",
-                    7: "luglio",
-                    8: "agosto",
-                }
+                mesi_inv = {9: "settembre", 10: "ottobre", 11: "novembre", 12: "dicembre", 1: "gennaio", 2: "febbraio", 3: "marzo", 4: "aprile", 5: "maggio", 6: "giugno", 7: "luglio", 8: "agosto"}
                 return mesi_inv.get(dt.month, ""), dt.month, dt.year
             except Exception:
                 pass
@@ -792,40 +766,24 @@ def estrai_dati_monitor_mensile(fogli):
 
     # 1. Dettaglio Analitico Attività (Colonne A:G)
     df_db = df_mon.iloc[:, :7].copy()
-    df_db.columns = [
-        "ANNO_RAW",
-        "MESE",
-        "PROGETTO",
-        "TEAM",
-        "ATTIVITÀ",
-        "MINUTI",
-        "GIORNI",
-    ]
+    df_db.columns = ["ANNO_RAW", "MESE", "PROGETTO", "TEAM", "ATTIVITÀ", "MINUTI", "GIORNI"]
 
     df_db["GIORNI"] = serie_numerica(df_db["GIORNI"])
     df_db["PROGETTO"] = df_db["PROGETTO"].astype(str).str.strip()
     df_db["TEAM"] = df_db["TEAM"].astype(str).str.strip().str.upper()
 
     df_db = df_db.dropna(subset=["PROGETTO", "GIORNI"]).copy()
-    df_db = df_db[
-        (df_db["GIORNI"] > 0)
-        & (~df_db["PROGETTO"].str.lower().isin(["nan", "none", "totale", ""]))
-    ].copy()
+    df_db = df_db[(df_db["GIORNI"] > 0) & (~df_db["PROGETTO"].str.lower().isin(["nan", "none", "totale", ""]))].copy()
 
-    parsed_db = [
-        parsing_mese_anno(m, a)
-        for m, a in zip(df_db["MESE"], df_db["ANNO_RAW"])
-    ]
+    parsed_db = [parsing_mese_anno(m, a) for m, a in zip(df_db["MESE"], df_db["ANNO_RAW"])]
     df_db["MESE_NOME"] = [p[0] for p in parsed_db]
     df_db["MESE_NUM"] = [p[1] for p in parsed_db]
     df_db["ANNO"] = [p[2] for p in parsed_db]
 
     df_db["SORT_KEY"] = df_db["ANNO"] * 100 + df_db["MESE_NUM"]
-    df_db["PERIODO"] = (
-        df_db["MESE_NOME"].str.capitalize() + " " + df_db["ANNO"].astype(str)
-    )
+    df_db["PERIODO"] = df_db["MESE_NOME"].str.capitalize() + " " + df_db["ANNO"].astype(str)
 
-    # 2. Riepilogo Ufficiale Giorni Lavorati per Team (Colonne K:O)
+    # 2. Riepilogo Ufficiale Giorni Interi Lavorati (Colonne K:O)
     if df_mon.shape[1] >= 15:
         df_tot_sub = df_mon.iloc[:, 10:15].copy()
         df_tot_sub.columns = ["ANNO_C", "MESE_C", "EPAL", "MGIO", "TOTALE_MESE"]
@@ -836,12 +794,7 @@ def estrai_dati_monitor_mensile(fogli):
 
         df_tot_raw = df_tot_sub[
             (df_tot_sub["MESE_C"].notna())
-            & (
-                ~df_tot_sub["MESE_C"]
-                .astype(str)
-                .str.upper()
-                .str.contains("TOTALE|ANNO|MESE")
-            )
+            & (~df_tot_sub["MESE_C"].astype(str).str.upper().str.contains("TOTALE|ANNO|MESE"))
         ].copy()
 
         df_tot_long = df_tot_raw.melt(
@@ -850,26 +803,21 @@ def estrai_dati_monitor_mensile(fogli):
             var_name="TEAM",
             value_name="GIORNI_LAVORATI_UFFICIALI",
         )
-        df_tot_long["TEAM"] = (
-            df_tot_long["TEAM"].astype(str).str.strip().str.upper()
-        )
+        df_tot_long["TEAM"] = df_tot_long["TEAM"].astype(str).str.strip().str.upper()
 
-        parsed_tot = [
-            parsing_mese_anno(m, a)
-            for m, a in zip(df_tot_long["MESE_C"], df_tot_long["ANNO_C"])
-        ]
+        # Pulizia zeri (ignora righe vuote ma mantiene gli zeri calcolati dalle formule)
+        df_tot_long = df_tot_long.dropna(subset=["GIORNI_LAVORATI_UFFICIALI"])
+
+        parsed_tot = [parsing_mese_anno(m, a) for m, a in zip(df_tot_long["MESE_C"], df_tot_long["ANNO_C"])]
         df_tot_long["MESE_NOME"] = [p[0] for p in parsed_tot]
         df_tot_long["MESE_NUM"] = [p[1] for p in parsed_tot]
         df_tot_long["ANNO"] = [p[2] for p in parsed_tot]
 
-        df_tot_long["SORT_KEY"] = (
-            df_tot_long["ANNO"] * 100 + df_tot_long["MESE_NUM"]
-        )
-        df_tot_long["PERIODO"] = (
-            df_tot_long["MESE_NOME"].str.capitalize()
-            + " "
-            + df_tot_long["ANNO"].astype(str)
-        )
+        # Rimuove le righe in cui non è stato riconosciuto un mese valido
+        df_tot_long = df_tot_long[df_tot_long["MESE_NUM"] > 0]
+
+        df_tot_long["SORT_KEY"] = df_tot_long["ANNO"] * 100 + df_tot_long["MESE_NUM"]
+        df_tot_long["PERIODO"] = df_tot_long["MESE_NOME"].str.capitalize() + " " + df_tot_long["ANNO"].astype(str)
     else:
         df_tot_long = pd.DataFrame()
 
@@ -1974,8 +1922,8 @@ vista = st.sidebar.radio(
         "Effort & Carico di Lavoro",
         "Avanzamento",
         "Dettaglio progetto",
-        "Dati sorgente"
-    ]
+        "Dati sorgente",
+    ],
 )
 
 
