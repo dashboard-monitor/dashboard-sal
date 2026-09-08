@@ -2179,7 +2179,7 @@ elif vista == "Saturazione & Capacità":
     else:
         team_cap_sel = ["EPAL", "MGIO"]
 
-    # 2. Slider di Scorrimento Temporale (Da Mese X a Mese Y)
+    # 2. Slider di Scorrimento Temporale (Dinamico)
     periodi_ordinati = (
         df_tot_mon.sort_values("SORT_KEY")["PERIODO"].unique().tolist()
     )
@@ -2205,7 +2205,7 @@ elif vista == "Saturazione & Capacità":
         key="progetto_cap_sel",
     )
 
-    # Filtraggio dati basato su Team, Intervallo Temporale e Progetto
+    # Filtraggio dati
     df_tot_filt = df_tot_mon[
         (df_tot_mon["TEAM"].isin(team_cap_sel))
         & (df_tot_mon["PERIODO"].isin(periodi_sel))
@@ -2326,69 +2326,98 @@ elif vista == "Saturazione & Capacità":
 
     st.markdown("---")
 
-    # GRAFICI 3 & 4: Scomposizione per Commessa
+    # GRAFICI 3 & 4: Allocazione Lavoro per Commessa (Top 3 Mese per Mese)
     st.markdown("### 🧩 Allocazione Lavoro per Commessa")
 
-    col_mon_left, col_mon_right = st.columns([2, 1])
-
-    df_db_sorted = df_db_filt.sort_values("SORT_KEY").copy()
-    ordine_mesi = df_db_sorted["PERIODO"].unique().tolist()
-
-    top_commesse = (
-        df_db_filt.groupby("PROGETTO")["GIORNI"]
-        .sum()
-        .nlargest(6)
-        .index.tolist()
-    )
-
-    df_db_grouped = df_db_sorted.copy()
-    df_db_grouped["COMMESSA_DISPLAY"] = df_db_grouped["PROGETTO"].apply(
-        lambda x: x if x in top_commesse else "Altri Progetti"
-    )
-
-    with col_mon_left:
-        fig_mon_proj = px.bar(
-            df_db_grouped,
-            x="PERIODO",
-            y="GIORNI",
-            color="COMMESSA_DISPLAY",
-            title="Scomposizione Mensile Giorni Lavorati (Top Commesse)",
-            barmode="stack",
-            category_orders={"PERIODO": ordine_mesi},
-            template="plotly_white",
-            height=480,
+    if df_db_filt.empty:
+        st.info(
+            "Nessun dettaglio attività disponibile per i filtri selezionati."
         )
-        fig_mon_proj.update_xaxes(type="category", title="Periodo Mensile")
-        fig_mon_proj.update_yaxes(title="Giorni Lavorati")
-        fig_mon_proj.update_layout(
-            legend_title_text="Commessa",
-            legend=dict(
-                orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5
-            ),
-        )
-        st.plotly_chart(
-            fig_mon_proj, use_container_width=True, config=PLOTLY_CONFIG
-        )
+    else:
+        col_mon_left, col_mon_right = st.columns([2, 1])
 
-    with col_mon_right:
-        df_top_p = (
-            df_db_filt.groupby("PROGETTO")["GIORNI"]
+        # Raggruppamento Mese x Progetto per individuare le Top 3 di ciascun mese
+        df_m_p = (
+            df_db_filt.groupby(
+                ["PERIODO", "SORT_KEY", "PROGETTO"], as_index=False
+            )["GIORNI"]
             .sum()
-            .reset_index()
-            .sort_values("GIORNI", ascending=False)
         )
-        fig_mon_pie = px.pie(
-            df_top_p,
-            names="PROGETTO",
-            values="GIORNI",
-            title="Distribuzione Giorni Totali per Commessa",
-            hole=0.45,
-            template="plotly_white",
-            height=480,
+
+        # Ranking delle commesse mese per mese
+        df_m_p["RANK_MESE"] = df_m_p.groupby("PERIODO")["GIORNI"].rank(
+            method="first", ascending=False
         )
-        st.plotly_chart(
-            fig_mon_pie, use_container_width=True, config=PLOTLY_CONFIG
+
+        # Mantiene il nome solo se tra le prime 3 del mese, altrimenti accorpa in 'Altri Progetti'
+        df_m_p["COMMESSA_DISPLAY"] = df_m_p.apply(
+            lambda r: r["PROGETTO"]
+            if r["RANK_MESE"] <= 3
+            else "Altri Progetti",
+            axis=1,
         )
+
+        # Aggregazione finale per il grafico a barre
+        df_top3_mensile = (
+            df_m_p.groupby(["PERIODO", "SORT_KEY", "COMMESSA_DISPLAY"], as_index=False)[
+                "GIORNI"
+            ]
+            .sum()
+            .sort_values("SORT_KEY")
+        )
+
+        ordine_mesi = df_top3_mensile["PERIODO"].unique().tolist()
+
+        with col_mon_left:
+            fig_mon_proj = px.bar(
+                df_top3_mensile,
+                x="PERIODO",
+                y="GIORNI",
+                color="COMMESSA_DISPLAY",
+                title=(
+                    "Scomposizione Mensile Giorni Lavorati (Top 3 Commesse per"
+                    " Mese)"
+                ),
+                barmode="stack",
+                category_orders={"PERIODO": ordine_mesi},
+                template="plotly_white",
+                height=480,
+            )
+            fig_mon_proj.update_xaxes(type="category", title="Periodo Mensile")
+            fig_mon_proj.update_yaxes(title="Giorni Lavorati")
+            fig_mon_proj.update_layout(
+                legend_title_text="Commessa",
+                legend=dict(
+                    orientation="h",
+                    yanchor="top",
+                    y=-0.22,
+                    xanchor="center",
+                    x=0.5,
+                ),
+            )
+            st.plotly_chart(
+                fig_mon_proj, use_container_width=True, config=PLOTLY_CONFIG
+            )
+
+        with col_mon_right:
+            df_top_p = (
+                df_db_filt.groupby("PROGETTO")["GIORNI"]
+                .sum()
+                .reset_index()
+                .sort_values("GIORNI", ascending=False)
+            )
+            fig_mon_pie = px.pie(
+                df_top_p,
+                names="PROGETTO",
+                values="GIORNI",
+                title="Distribuzione Giorni Totali per Commessa",
+                hole=0.45,
+                template="plotly_white",
+                height=480,
+            )
+            st.plotly_chart(
+                fig_mon_pie, use_container_width=True, config=PLOTLY_CONFIG
+            )
 
 elif vista == "Avanzamento":
     if portfolio_filtrato.empty:
