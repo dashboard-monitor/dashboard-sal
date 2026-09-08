@@ -2171,7 +2171,7 @@ elif vista == "Saturazione & Capacità":
     st.sidebar.markdown("---")
     st.sidebar.subheader("Filtri Analitici")
 
-    # 1. Automazione Selezione Team tramite la variabile globale "scope" (radio button in alto)
+    # 1. Automazione Selezione Team tramite la variabile globale "scope"
     if scope == "EPAL":
         team_cap_sel = ["EPAL"]
     elif scope == "MGIO":
@@ -2179,7 +2179,7 @@ elif vista == "Saturazione & Capacità":
     else:
         team_cap_sel = ["EPAL", "MGIO"]
 
-    # 2. Filtro Progetto (unico filtro rimasto in sidebar per questa vista)
+    # 2. Filtro Progetto
     progetto_cap_sel = st.sidebar.multiselect(
         "Isola singole Commesse",
         options=sorted(df_db_mon["PROGETTO"].unique()),
@@ -2187,7 +2187,7 @@ elif vista == "Saturazione & Capacità":
         key="progetto_cap_sel",
     )
 
-    # Filtraggio dati in base al Team automatico e all'eventuale Progetto
+    # Filtraggio dati
     df_db_filt = df_db_mon[df_db_mon["TEAM"].isin(team_cap_sel)].copy()
     if progetto_cap_sel:
         df_db_filt = df_db_filt[
@@ -2198,26 +2198,26 @@ elif vista == "Saturazione & Capacità":
         "SORT_KEY"
     )
 
-    # Intestazione della pagina
     st.subheader("📅 Consuntivo Lavorato Mensile Team & Commesse")
     st.markdown(
         "Monitoraggio delle giornate lavorate trasversali per team con linea"
         " di tendenza e scomposizione analitica per singola commessa."
     )
 
-    # ==========================================
     # KPI SUMMARY CARDS DINAMICHE
-    # ==========================================
     num_teams = len(team_cap_sel)
-    
-    # Se ci sono 2 team mostra 3 colonne, se c'è 1 team mostra 1 colonna ristretta
-    cols = st.columns(3 if num_teams == 2 else [1, 2]) 
+    cols = st.columns(3 if num_teams == 2 else [1, 2])
 
     if num_teams == 2:
-        tot_epal = df_tot_filt[df_tot_filt["TEAM"] == "EPAL"]["GIORNI_LAVORATI_UFFICIALI"].sum()
-        tot_mgio = df_tot_filt[df_tot_filt["TEAM"] == "MGIO"]["GIORNI_LAVORATI_UFFICIALI"].sum()
-        # Calcolo del totale complessivo univoco
-        tot_complessivo = df_tot_mon.drop_duplicates(subset=["PERIODO"])["TOTALE_MESE"].sum()
+        tot_epal = df_tot_filt[df_tot_filt["TEAM"] == "EPAL"][
+            "GIORNI_LAVORATI_UFFICIALI"
+        ].sum()
+        tot_mgio = df_tot_filt[df_tot_filt["TEAM"] == "MGIO"][
+            "GIORNI_LAVORATI_UFFICIALI"
+        ].sum()
+        tot_complessivo = df_tot_mon.drop_duplicates(subset=["PERIODO"])[
+            "TOTALE_MESE"
+        ].sum()
 
         cols[0].metric("Totale Effettivo EPAL", f"{tot_epal:.1f} gg")
         cols[1].metric("Totale Effettivo MGIO", f"{tot_mgio:.1f} gg")
@@ -2225,18 +2225,17 @@ elif vista == "Saturazione & Capacità":
     else:
         team_singolo = team_cap_sel[0]
         tot_singolo = df_tot_filt["GIORNI_LAVORATI_UFFICIALI"].sum()
-        cols[0].metric(f"Totale Effettivo {team_singolo}", f"{tot_singolo:.1f} gg")
+        cols[0].metric(
+            f"Totale Effettivo {team_singolo}", f"{tot_singolo:.1f} gg"
+        )
 
     st.markdown("---")
 
-    # ==========================================
     # GRAFICI 1 & 2 AFFIANCATI: Volumi (Bar) e Andamento (Linee)
-    # ==========================================
     st.markdown("### 📊 Volumi Mensili e Trend di Erogazione")
 
     col_chart1, col_chart2 = st.columns(2)
 
-    # 1. Istogramma (Confronto quantitativo puro)
     with col_chart1:
         fig_mon_bar = go.Figure()
         for team_name in team_cap_sel:
@@ -2251,6 +2250,7 @@ elif vista == "Saturazione & Capacità":
                     textposition="auto",
                 )
             )
+        fig_mon_bar.update_xaxes(type="category")
         fig_mon_bar.update_layout(
             barmode="group",
             height=400,
@@ -2258,12 +2258,15 @@ elif vista == "Saturazione & Capacità":
             xaxis_title="Periodo Mensile",
             yaxis_title="Giorni Lavorati",
             title="Volumi (Istogramma)",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+            ),
             template="plotly_white",
         )
-        st.plotly_chart(fig_mon_bar, use_container_width=True, config=PLOTLY_CONFIG)
+        st.plotly_chart(
+            fig_mon_bar, use_container_width=True, config=PLOTLY_CONFIG
+        )
 
-    # 2. Linea di Tendenza (Traiettoria temporale)
     with col_chart2:
         fig_mon_line = go.Figure()
         for team_name in team_cap_sel:
@@ -2275,46 +2278,72 @@ elif vista == "Saturazione & Capacità":
                     name=f"Trend {team_name}",
                     mode="lines+markers",
                     line=dict(
-                        width=3, 
-                        color=COLORI_TEAM.get(team_name, "#2563EB"), 
-                        shape="spline"
+                        width=3,
+                        color=COLORI_TEAM.get(team_name, "#2563EB"),
+                        shape="spline",
                     ),
                     marker=dict(size=8),
                 )
             )
+        fig_mon_line.update_xaxes(type="category")
         fig_mon_line.update_layout(
             height=400,
             hovermode="x unified",
             xaxis_title="Periodo Mensile",
             yaxis_title="Giorni Lavorati",
             title="Andamento Storico (Curva di Tendenza)",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+            ),
             template="plotly_white",
         )
-        st.plotly_chart(fig_mon_line, use_container_width=True, config=PLOTLY_CONFIG)
+        st.plotly_chart(
+            fig_mon_line, use_container_width=True, config=PLOTLY_CONFIG
+        )
 
     st.markdown("---")
 
-    # ==========================================
-    # GRAFICI 3 & 4: Scomposizione per Commessa
-    # ==========================================
+    # GRAFICI 3 & 4: Scomposizione per Commessa (OTTIMIZZATI)
     st.markdown("### 🧩 Allocazione Lavoro per Commessa")
 
     col_mon_left, col_mon_right = st.columns([2, 1])
 
+    # Preparazione ordinamento mensile categorico
+    df_db_sorted = df_db_filt.sort_values("SORT_KEY").copy()
+    ordine_mesi = df_db_sorted["PERIODO"].unique().tolist()
+
+    # Raggruppamento Smart: Top 6 Progetti + "Altri Progetti"
+    top_commesse = (
+        df_db_filt.groupby("PROGETTO")["GIORNI"]
+        .sum()
+        .nlargest(6)
+        .index.tolist()
+    )
+
+    df_db_grouped = df_db_sorted.copy()
+    df_db_grouped["COMMESSA_DISPLAY"] = df_db_grouped["PROGETTO"].apply(
+        lambda x: x if x in top_commesse else "Altri Progetti"
+    )
+
     with col_mon_left:
         fig_mon_proj = px.bar(
-            df_db_filt.sort_values("SORT_KEY"),
+            df_db_grouped,
             x="PERIODO",
             y="GIORNI",
-            color="PROGETTO",
-            title="Scomposizione Mensile Giorni Lavorati per Progetto",
+            color="COMMESSA_DISPLAY",
+            title="Scomposizione Mensile Giorni Lavorati (Top Commesse)",
             barmode="stack",
+            category_orders={"PERIODO": ordine_mesi},
             template="plotly_white",
             height=480,
         )
+        fig_mon_proj.update_xaxes(type="category", title="Periodo Mensile")
+        fig_mon_proj.update_yaxes(title="Giorni Lavorati")
         fig_mon_proj.update_layout(
-            xaxis_title="Periodo Mensile", yaxis_title="Giorni Lavorati"
+            legend_title_text="Commessa",
+            legend=dict(
+                orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5
+            ),
         )
         st.plotly_chart(
             fig_mon_proj, use_container_width=True, config=PLOTLY_CONFIG
