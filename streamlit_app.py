@@ -2151,7 +2151,7 @@ elif vista == "Effort & Carico di Lavoro":
 
     if df_db_mon is None or df_tot_mon is None or df_tot_mon.empty:
         st.warning(
-            "⚠️ Foglio `MINDS_MONITOR_MENSILE` non individuato o privo della tabella dei totali (colonne K-O)."
+            "⚠️ Foglio `MINDS_MONITOR_MENSILE` non individuato o privo della tabella dei totali (colonne J-N)."
         )
         st.stop()
 
@@ -2166,7 +2166,7 @@ elif vista == "Effort & Carico di Lavoro":
     else:
         team_cap_sel = ["EPAL", "MGIO"]
 
-    # 2. Slider di Scorrimento Temporale (Basato sui totali)
+    # 2. Slider di Scorrimento Temporale
     periodi_ordinati = df_tot_mon.sort_values("SORT_KEY")["PERIODO"].unique().tolist()
 
     if periodi_ordinati:
@@ -2190,13 +2190,13 @@ elif vista == "Effort & Carico di Lavoro":
         key="progetto_cap_sel",
     )
 
-    # Dati UFFICIALI arrotondati per Trend e KPI (Colonne M, N, O)
+    # Dati UFFICIALI (Interi)
     df_tot_filt = df_tot_mon[
         (df_tot_mon["TEAM"].isin(team_cap_sel))
         & (df_tot_mon["PERIODO"].isin(periodi_sel))
     ].sort_values("SORT_KEY")
 
-    # Dati DI DETTAGLIO per Tabelle e Scomposizione (Colonne A-G)
+    # Dati DETTAGLIO (Effettivi Progetti)
     df_db_filt = df_db_mon[
         (df_db_mon["TEAM"].isin(team_cap_sel))
         & (df_db_mon["PERIODO"].isin(periodi_sel))
@@ -2206,29 +2206,25 @@ elif vista == "Effort & Carico di Lavoro":
         df_db_filt = df_db_filt[df_db_filt["PROGETTO"].isin(progetto_cap_sel)].copy()
 
     st.subheader("📅 Consuntivo Effort & Carico di Lavoro Mensile")
-    st.markdown(
-        "Monitoraggio delle giornate lavorate ufficiali lette dalla tabella di riepilogo "
-        "(Colonne **M**, **N**, **O**) e dettaglio per commessa."
-    )
 
-    # KPI SUMMARY CARDS DINAMICHE (Lette da colonne M, N, O)
+    # CALCOLO METRICHE PER I 3 RIQUADRI
     num_teams = len(team_cap_sel)
-    cols = st.columns(3 if num_teams == 2 else [1, 2])
-
     if num_teams == 2:
-        tot_epal = df_tot_filt[df_tot_filt["TEAM"] == "EPAL"]["GIORNI_LAVORATI_UFFICIALI"].sum()
-        tot_mgio = df_tot_filt[df_tot_filt["TEAM"] == "MGIO"]["GIORNI_LAVORATI_UFFICIALI"].sum()
-        
-        # Il totale complessivo si calcola deduplicando i periodi così somma la colonna O una sola volta
-        tot_complessivo = df_tot_filt.drop_duplicates(subset=["PERIODO"])["TOTALE_MESE"].sum()
-
-        cols[0].metric("Giorni Interi EPAL (Col. M)", f"{tot_epal:.0f} gg")
-        cols[1].metric("Giorni Interi MGIO (Col. N)", f"{tot_mgio:.0f} gg")
-        cols[2].metric("Totale Complessivo (Col. O)", f"{tot_complessivo:.0f} gg")
+        tot_interi = df_tot_filt.drop_duplicates(subset=["PERIODO"])["TOTALE_MESE"].sum()
+        label_interi = "Giorni Interi Complessivi"
     else:
         team_singolo = team_cap_sel[0]
-        tot_singolo = df_tot_filt["GIORNI_LAVORATI_UFFICIALI"].sum()
-        cols[0].metric(f"Giorni Interi {team_singolo}", f"{tot_singolo:.0f} gg")
+        tot_interi = df_tot_filt["GIORNI_LAVORATI_UFFICIALI"].sum()
+        label_interi = f"Giorni Interi {team_singolo}"
+
+    tot_effettivi = df_db_filt["GIORNI"].sum()
+    sat_pct = (tot_effettivi / tot_interi * 100) if tot_interi > 0 else 0.0
+
+    # RENDERING I 3 RIQUADRI AFFIANCATI
+    c1, c2, c3 = st.columns(3)
+    c1.metric(label_interi, f"{tot_interi:.0f} gg")
+    c2.metric("Giorni Effettivi Progetti", f"{tot_effettivi:.1f} gg")
+    c3.metric("Saturazione Progetti", f"{sat_pct:.1f}%")
 
     st.markdown("---")
 
@@ -2296,7 +2292,7 @@ elif vista == "Effort & Carico di Lavoro":
 
     st.markdown("---")
 
-    # GRAFICI 3 & 4: Allocazione Effort per Commessa (Derivato da log dettagliato A:G)
+    # GRAFICI 3 & 4: Allocazione Effort per Commessa
     st.markdown("### 🧩 Allocazione Effort per Commessa")
     st.caption("*Nota: La scomposizione per commessa si basa sulle singole frazioni giornaliere registrate a calendario.*")
 
