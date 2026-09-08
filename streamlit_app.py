@@ -2169,27 +2169,25 @@ elif vista == "Saturazione & Capacità":
         st.stop()
 
     st.sidebar.markdown("---")
-    st.sidebar.subheader("Filtri Monitoraggio")
+    st.sidebar.subheader("Filtri Analitici")
 
-    default_teams = ["EPAL", "MGIO"]
+    # 1. Automazione Selezione Team tramite la variabile globale "scope" (radio button in alto)
     if scope == "EPAL":
-        default_teams = ["EPAL"]
+        team_cap_sel = ["EPAL"]
     elif scope == "MGIO":
-        default_teams = ["MGIO"]
+        team_cap_sel = ["MGIO"]
+    else:
+        team_cap_sel = ["EPAL", "MGIO"]
 
-    team_cap_sel = st.sidebar.multiselect(
-        "Seleziona Team",
-        options=["EPAL", "MGIO"],
-        default=default_teams,
-        key="team_cap_sel",
-    )
+    # 2. Filtro Progetto (unico filtro rimasto in sidebar per questa vista)
     progetto_cap_sel = st.sidebar.multiselect(
-        "Filtra Progetto",
+        "Isola singole Commesse",
         options=sorted(df_db_mon["PROGETTO"].unique()),
         default=[],
         key="progetto_cap_sel",
     )
 
+    # Filtraggio dati in base al Team automatico e all'eventuale Progetto
     df_db_filt = df_db_mon[df_db_mon["TEAM"].isin(team_cap_sel)].copy()
     if progetto_cap_sel:
         df_db_filt = df_db_filt[
@@ -2200,74 +2198,106 @@ elif vista == "Saturazione & Capacità":
         "SORT_KEY"
     )
 
+    # Intestazione della pagina
     st.subheader("📅 Consuntivo Lavorato Mensile Team & Commesse")
     st.markdown(
-        "Monitoraggio delle giornate lavorate trasversali per team e"
-        " scomposizione analitica per singola commessa."
+        "Monitoraggio delle giornate lavorate trasversali per team con linea"
+        " di tendenza e scomposizione analitica per singola commessa."
     )
 
+    # ==========================================
+    # KPI SUMMARY CARDS DINAMICHE
+    # ==========================================
     num_teams = len(team_cap_sel)
-    if num_teams > 0:
-        cols = st.columns(3 if num_teams == 2 else 2)
+    
+    # Se ci sono 2 team mostra 3 colonne, se c'è 1 team mostra 1 colonna ristretta
+    cols = st.columns(3 if num_teams == 2 else [1, 2]) 
 
-        if "EPAL" in team_cap_sel:
-            tot_epal = df_tot_filt[df_tot_filt["TEAM"] == "EPAL"][
-                "GIORNI_LAVORATI_UFFICIALI"
-            ].sum()
-            cols[0].metric("Totale Effettivo EPAL", f"{tot_epal:.1f} gg")
+    if num_teams == 2:
+        tot_epal = df_tot_filt[df_tot_filt["TEAM"] == "EPAL"]["GIORNI_LAVORATI_UFFICIALI"].sum()
+        tot_mgio = df_tot_filt[df_tot_filt["TEAM"] == "MGIO"]["GIORNI_LAVORATI_UFFICIALI"].sum()
+        # Calcolo del totale complessivo univoco
+        tot_complessivo = df_tot_mon.drop_duplicates(subset=["PERIODO"])["TOTALE_MESE"].sum()
 
-        if "MGIO" in team_cap_sel:
-            tot_mgio = df_tot_filt[df_tot_filt["TEAM"] == "MGIO"][
-                "GIORNI_LAVORATI_UFFICIALI"
-            ].sum()
-            idx = 1 if "EPAL" in team_cap_sel else 0
-            cols[idx].metric("Totale Effettivo MGIO", f"{tot_mgio:.1f} gg")
-
-        if num_teams == 2:
-            tot_complessivo = (
-                df_tot_mon.drop_duplicates(subset=["PERIODO"])[
-                    "TOTALE_MESE"
-                ].sum()
-            )
-            cols[2].metric("Totale Complessivo", f"{tot_complessivo:.1f} gg")
+        cols[0].metric("Totale Effettivo EPAL", f"{tot_epal:.1f} gg")
+        cols[1].metric("Totale Effettivo MGIO", f"{tot_mgio:.1f} gg")
+        cols[2].metric("Totale Complessivo", f"{tot_complessivo:.1f} gg")
+    else:
+        team_singolo = team_cap_sel[0]
+        tot_singolo = df_tot_filt["GIORNI_LAVORATI_UFFICIALI"].sum()
+        cols[0].metric(f"Totale Effettivo {team_singolo}", f"{tot_singolo:.1f} gg")
 
     st.markdown("---")
 
-    st.markdown("### 📊 Giorni Lavorati Effettivi Mensili per Team")
+    # ==========================================
+    # GRAFICI 1 & 2 AFFIANCATI: Volumi (Bar) e Andamento (Linee)
+    # ==========================================
+    st.markdown("### 📊 Volumi Mensili e Trend di Erogazione")
 
-    fig_mon_bar = go.Figure()
+    col_chart1, col_chart2 = st.columns(2)
 
-    for team_name in team_cap_sel:
-        df_t = df_tot_filt[df_tot_filt["TEAM"] == team_name]
-
-        fig_mon_bar.add_trace(
-            go.Bar(
-                x=df_t["PERIODO"],
-                y=df_t["GIORNI_LAVORATI_UFFICIALI"],
-                name=f"Giorni Lavorati {team_name}",
-                marker_color=COLORI_TEAM.get(team_name, "#2563EB"),
-                text=df_t["GIORNI_LAVORATI_UFFICIALI"].round(1),
-                textposition="outside",
+    # 1. Istogramma (Confronto quantitativo puro)
+    with col_chart1:
+        fig_mon_bar = go.Figure()
+        for team_name in team_cap_sel:
+            df_t = df_tot_filt[df_tot_filt["TEAM"] == team_name]
+            fig_mon_bar.add_trace(
+                go.Bar(
+                    x=df_t["PERIODO"],
+                    y=df_t["GIORNI_LAVORATI_UFFICIALI"],
+                    name=f"{team_name}",
+                    marker_color=COLORI_TEAM.get(team_name, "#2563EB"),
+                    text=df_t["GIORNI_LAVORATI_UFFICIALI"].round(1),
+                    textposition="auto",
+                )
             )
+        fig_mon_bar.update_layout(
+            barmode="group",
+            height=400,
+            hovermode="x unified",
+            xaxis_title="Periodo Mensile",
+            yaxis_title="Giorni Lavorati",
+            title="Volumi (Istogramma)",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            template="plotly_white",
         )
+        st.plotly_chart(fig_mon_bar, use_container_width=True, config=PLOTLY_CONFIG)
 
-    fig_mon_bar.update_layout(
-        barmode="group",
-        height=480,
-        hovermode="x unified",
-        xaxis_title="Periodo Mensile",
-        yaxis_title="Giorni Lavorati Effettivi",
-        legend=dict(
-            orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
-        ),
-        template="plotly_white",
-    )
-    st.plotly_chart(
-        fig_mon_bar, use_container_width=True, config=PLOTLY_CONFIG
-    )
+    # 2. Linea di Tendenza (Traiettoria temporale)
+    with col_chart2:
+        fig_mon_line = go.Figure()
+        for team_name in team_cap_sel:
+            df_t = df_tot_filt[df_tot_filt["TEAM"] == team_name]
+            fig_mon_line.add_trace(
+                go.Scatter(
+                    x=df_t["PERIODO"],
+                    y=df_t["GIORNI_LAVORATI_UFFICIALI"],
+                    name=f"Trend {team_name}",
+                    mode="lines+markers",
+                    line=dict(
+                        width=3, 
+                        color=COLORI_TEAM.get(team_name, "#2563EB"), 
+                        shape="spline"
+                    ),
+                    marker=dict(size=8),
+                )
+            )
+        fig_mon_line.update_layout(
+            height=400,
+            hovermode="x unified",
+            xaxis_title="Periodo Mensile",
+            yaxis_title="Giorni Lavorati",
+            title="Andamento Storico (Curva di Tendenza)",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            template="plotly_white",
+        )
+        st.plotly_chart(fig_mon_line, use_container_width=True, config=PLOTLY_CONFIG)
 
     st.markdown("---")
 
+    # ==========================================
+    # GRAFICI 3 & 4: Scomposizione per Commessa
+    # ==========================================
     st.markdown("### 🧩 Allocazione Lavoro per Commessa")
 
     col_mon_left, col_mon_right = st.columns([2, 1])
