@@ -1971,11 +1971,11 @@ vista = st.sidebar.radio(
     "Vista",
     [
         "Executive",
-        "Saturazione & Capacità",
+        "Effort & Carico di Lavoro",
         "Avanzamento",
         "Dettaglio progetto",
-        "Dati sorgente",
-    ],
+        "Dati sorgente"
+    ]
 )
 
 
