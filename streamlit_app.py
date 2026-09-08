@@ -10,6 +10,30 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+import numpy as np
+import plotly.graph_objects as go
+
+# Aggiungi tra le configurazioni dei colori:
+COLORI_TEAM = {
+    "EPAL": "#1E40AF",
+    "MGIO": "#D97706",
+}
+
+# Aggiungi per l'ordinamento cronologico dei mesi:
+MESI_ORDINE = {
+    "settembre": 9,
+    "ottobre": 10,
+    "novembre": 11,
+    "dicembre": 12,
+    "gennaio": 1,
+    "febbraio": 2,
+    "marzo": 3,
+    "aprile": 4,
+    "maggio": 5,
+    "giugno": 6,
+    "luglio": 7,
+    "agosto": 8,
+}
 
 # ============================================================
 # CONFIGURAZIONE GENERALE
@@ -693,6 +717,100 @@ def calcola_metriche_minds(fogli):
 
     return metriche_minds
 
+def estrai_dati_monitor_mensile(fogli):
+    if "MINDS_MONITOR_MENSILE" not in fogli:
+        return None, None
+
+    df_mon = fogli["MINDS_MONITOR_MENSILE"]
+    if df_mon.empty:
+        return None, None
+
+    # 1. Database Piatto Attività (Colonne A:G)
+    df_db = df_mon.iloc[:, :7].copy()
+    df_db.columns = [
+        "ANNO",
+        "MESE",
+        "PROGETTO",
+        "TEAM",
+        "ATTIVITÀ",
+        "MINUTI",
+        "GIORNI",
+    ]
+    df_db = df_db.dropna(subset=["ANNO", "PROGETTO", "GIORNI"]).copy()
+
+    df_db["GIORNI"] = serie_numerica(df_db["GIORNI"])
+    df_db["ANNO"] = serie_numerica(df_db["ANNO"]).fillna(0).astype(int)
+
+    df_db["MESE_NOME"] = (
+        df_db["MESE"]
+        .astype(str)
+        .str.replace(r"\d+", "", regex=True)
+        .str.replace(r"\(in corso\)", "", regex=True)
+        .str.strip()
+        .str.lower()
+    )
+    df_db["MESE_NUM"] = df_db["MESE_NOME"].map(MESI_ORDINE)
+    df_db["SORT_KEY"] = df_db["ANNO"] * 100 + df_db["MESE_NUM"].fillna(0)
+    df_db["PERIODO"] = (
+        df_db["MESE_NOME"].str.capitalize() + " " + df_db["ANNO"].astype(str)
+    )
+
+    # 2. Matrice Capacità Target (Colonne K:O)
+    if df_mon.shape[1] >= 14:
+        df_cap_sub = df_mon.iloc[:, 10:15].copy()
+
+        header_idx = None
+        for r_idx in range(min(5, len(df_cap_sub))):
+            row_vals = [
+                str(x).upper() for x in df_cap_sub.iloc[r_idx].values if pd.notna(x)
+            ]
+            if "EPAL" in row_vals and "MGIO" in row_vals:
+                header_idx = r_idx
+                break
+
+        if header_idx is not None:
+            df_cap_raw = df_cap_sub.iloc[header_idx + 1 :].copy()
+            df_cap_raw.columns = ["ANNO", "MESE", "EPAL", "MGIO", "TOTALE"]
+        else:
+            df_cap_raw = df_cap_sub.copy()
+            df_cap_raw.columns = ["ANNO", "MESE", "EPAL", "MGIO", "TOTALE"]
+
+        df_cap_raw = df_cap_raw.dropna(subset=["ANNO", "MESE"]).copy()
+        df_cap_raw = df_cap_raw[
+            df_cap_raw["ANNO"].astype(str).str.upper() != "TOTALE"
+        ]
+
+        df_cap_raw["EPAL"] = serie_numerica(df_cap_raw["EPAL"])
+        df_cap_raw["MGIO"] = serie_numerica(df_cap_raw["MGIO"])
+        df_cap_raw["ANNO"] = (
+            serie_numerica(df_cap_raw["ANNO"]).fillna(0).astype(int)
+        )
+
+        df_cap = df_cap_raw.melt(
+            id_vars=["ANNO", "MESE"],
+            value_vars=["EPAL", "MGIO"],
+            var_name="TEAM",
+            value_name="CAPACITA_TARGET",
+        )
+        df_cap["MESE_NOME"] = (
+            df_cap["MESE"]
+            .astype(str)
+            .str.replace(r"\d+", "", regex=True)
+            .str.replace(r"\(in corso\)", "", regex=True)
+            .str.strip()
+            .str.lower()
+        )
+        df_cap["MESE_NUM"] = df_cap["MESE_NOME"].map(MESI_ORDINE)
+        df_cap["SORT_KEY"] = df_cap["ANNO"] * 100 + df_cap["MESE_NUM"].fillna(0)
+        df_cap["PERIODO"] = (
+            df_cap["MESE_NOME"].str.capitalize()
+            + " "
+            + df_cap["ANNO"].astype(str)
+        )
+    else:
+        df_cap = pd.DataFrame()
+
+    return df_db, df_cap
 
 def arricchisci_portafoglio_minds(df_portfolio, metriche_minds):
     if df_portfolio.empty or not metriche_minds:
@@ -1786,7 +1904,16 @@ if st.sidebar.button("🔄 Aggiorna dati", use_container_width=True):
     st.cache_data.clear()
     st.rerun()
     
-vista = st.sidebar.radio("Vista", ["Executive", "Avanzamento", "Dettaglio progetto", "Dati sorgente"])
+vista = st.sidebar.radio(
+    "Vista",
+    [
+        "Executive",
+        "Saturazione & Capacità",
+        "Avanzamento",
+        "Dettaglio progetto",
+        "Dati sorgente",
+    ],
+)
 
 
 # ============================================================
@@ -1833,7 +1960,10 @@ else:
 
 portfolio_filtrato = portfolio.copy()
 
-if vista != "Dati sorgente" and not portfolio.empty:
+if (
+    vista not in ["Dati sorgente", "Saturazione & Capacità"]
+    and not portfolio.empty
+):
     st.sidebar.markdown("---")
     st.sidebar.subheader("Filtri")
     ricerca = st.sidebar.text_input("🔎 Cerca progetto", key=f"ricerca_{scope}")
@@ -2009,6 +2139,217 @@ if vista == "Executive":
     tabella_portafoglio(port_ord)
     st.download_button("⬇️ Scarica CSV", data=csv_bytes(port_ord), file_name=f"portfolio_{scope}.csv", mime="text/csv")
 
+elif vista == "Saturazione & Capacità":
+    df_db_mon, df_cap_mon = estrai_dati_monitor_mensile(fogli)
+
+    if df_db_mon is None or df_cap_mon is None or df_cap_mon.empty:
+        st.warning(
+            "⚠️ Foglio `MINDS_MONITOR_MENSILE` non individuato o incompleto"
+            " nel file sorgente."
+        )
+        st.stop()
+
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Filtri Capacità")
+
+    team_cap_sel = st.sidebar.multiselect(
+        "Seleziona Team",
+        options=["EPAL", "MGIO"],
+        default=["EPAL", "MGIO"],
+        key="team_cap_sel",
+    )
+    progetto_cap_sel = st.sidebar.multiselect(
+        "Filtra Progetto (Consuntivo)",
+        options=sorted(df_db_mon["PROGETTO"].unique()),
+        default=[],
+        key="progetto_cap_sel",
+    )
+
+    df_db_filt = df_db_mon[df_db_mon["TEAM"].isin(team_cap_sel)].copy()
+    if progetto_cap_sel:
+        df_db_filt = df_db_filt[
+            df_db_filt["PROGETTO"].isin(progetto_cap_sel)
+        ].copy()
+
+    df_erogato_mon = (
+        df_db_filt.groupby(["ANNO", "PERIODO", "SORT_KEY", "TEAM"])["GIORNI"]
+        .sum()
+        .reset_index()
+    )
+    df_erogato_mon.rename(columns={"GIORNI": "GIORNI_EROGATI"}, inplace=True)
+
+    df_cap_filt = df_cap_mon[df_cap_mon["TEAM"].isin(team_cap_sel)].copy()
+    df_mon_kpi = pd.merge(
+        df_cap_filt,
+        df_erogato_mon,
+        on=["ANNO", "PERIODO", "SORT_KEY", "TEAM"],
+        how="left",
+    ).fillna(0)
+    df_mon_kpi = df_mon_kpi.sort_values("SORT_KEY")
+
+    df_mon_kpi["SATURAZIONE_%"] = np.where(
+        df_mon_kpi["CAPACITA_TARGET"] > 0,
+        (df_mon_kpi["GIORNI_EROGATI"] / df_mon_kpi["CAPACITA_TARGET"]) * 100,
+        0,
+    )
+
+    st.subheader("📈 Monitoraggio Capacità Teorica vs Consuntivo Erogato")
+    st.markdown(
+        "Analisi mensile delle erogazioni giornaliere consuntivate rispetto"
+        " ai giorni lavorativi disponibili per ciascun team."
+    )
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    t_epal_ero = df_mon_kpi[df_mon_kpi["TEAM"] == "EPAL"]["GIORNI_EROGATI"].sum()
+    t_epal_tar = df_mon_kpi[df_mon_kpi["TEAM"] == "EPAL"][
+        "CAPACITA_TARGET"
+    ].sum()
+    s_epal = (t_epal_ero / t_epal_tar * 100) if t_epal_tar > 0 else 0
+
+    t_mgio_ero = df_mon_kpi[df_mon_kpi["TEAM"] == "MGIO"]["GIORNI_EROGATI"].sum()
+    t_mgio_tar = df_mon_kpi[df_mon_kpi["TEAM"] == "MGIO"][
+        "CAPACITA_TARGET"
+    ].sum()
+    s_mgio = (t_mgio_ero / t_mgio_tar * 100) if t_mgio_tar > 0 else 0
+
+    c1.metric(
+        "Erogato EPAL", f"{t_epal_ero:.1f} gg", f"Target: {t_epal_tar:.0f} gg"
+    )
+    c2.metric("Saturazione Media EPAL", f"{s_epal:.1f}%")
+    c3.metric(
+        "Erogato MGIO", f"{t_mgio_ero:.1f} gg", f"Target: {t_mgio_tar:.0f} gg"
+    )
+    c4.metric("Saturazione Media MGIO", f"{s_mgio:.1f}%")
+
+    st.markdown("---")
+
+    st.markdown("### 📊 Consuntivo Erogato vs Capacità Target")
+
+    fig_mon_bar = go.Figure()
+
+    for team_name in team_cap_sel:
+        df_t = df_mon_kpi[df_mon_kpi["TEAM"] == team_name]
+
+        fig_mon_bar.add_trace(
+            go.Bar(
+                x=df_t["PERIODO"],
+                y=df_t["GIORNI_EROGATI"],
+                name=f"Erogato {team_name}",
+                marker_color=COLORI_TEAM.get(team_name, "#2563EB"),
+                text=df_t["GIORNI_EROGATI"].round(1),
+                textposition="outside",
+            )
+        )
+
+        fig_mon_bar.add_trace(
+            go.Scatter(
+                x=df_t["PERIODO"],
+                y=df_t["CAPACITA_TARGET"],
+                name=f"Capacità Target {team_name}",
+                mode="lines+markers",
+                line=dict(width=3, dash="dash"),
+            )
+        )
+
+    fig_mon_bar.update_layout(
+        barmode="group",
+        height=480,
+        hovermode="x unified",
+        xaxis_title="Periodo Mensile",
+        yaxis_title="Giorni Lavorativi",
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+        ),
+        template="plotly_white",
+    )
+    st.plotly_chart(fig_mon_bar, use_container_width=True, config=PLOTLY_CONFIG)
+
+    st.markdown("### 📈 Trendline Percentuale di Saturazione Mensile")
+
+    fig_mon_trend = go.Figure()
+
+    for team_name in team_cap_sel:
+        df_t = df_mon_kpi[df_mon_kpi["TEAM"] == team_name]
+        fig_mon_trend.add_trace(
+            go.Scatter(
+                x=df_t["PERIODO"],
+                y=df_t["SATURAZIONE_%"],
+                name=f"Saturazione % {team_name}",
+                mode="lines+markers+text",
+                text=df_t["SATURAZIONE_%"].round(0).astype(int).astype(str)
+                + "%",
+                textposition="top center",
+                line=dict(width=3, color=COLORI_TEAM.get(team_name, "#2563EB")),
+            )
+        )
+
+    fig_mon_trend.add_hline(
+        y=100,
+        line_dash="dot",
+        line_color="#DC2626",
+        annotation_text="Saturazione 100%",
+        annotation_position="bottom right",
+    )
+
+    fig_mon_trend.update_layout(
+        height=450,
+        xaxis_title="Periodo Mensile",
+        yaxis_title="Saturazione (%)",
+        yaxis=dict(
+            range=[0, max(120, df_mon_kpi["SATURAZIONE_%"].max() + 15)]
+        ),
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+        ),
+        template="plotly_white",
+    )
+    st.plotly_chart(
+        fig_mon_trend, use_container_width=True, config=PLOTLY_CONFIG
+    )
+
+    st.markdown("---")
+    st.markdown("### 🧩 Allocazione Erogazione per Commessa")
+
+    col_mon_left, col_mon_right = st.columns([2, 1])
+
+    with col_mon_left:
+        fig_mon_proj = px.bar(
+            df_db_filt.sort_values("SORT_KEY"),
+            x="PERIODO",
+            y="GIORNI",
+            color="PROGETTO",
+            title="Scomposizione Giorni Mensili per Progetto",
+            barmode="stack",
+            template="plotly_white",
+            height=450,
+        )
+        fig_mon_proj.update_layout(
+            xaxis_title="Periodo Mensile", yaxis_title="Giorni Erogati"
+        )
+        st.plotly_chart(
+            fig_mon_proj, use_container_width=True, config=PLOTLY_CONFIG
+        )
+
+    with col_mon_right:
+        df_top_p = (
+            df_db_filt.groupby("PROGETTO")["GIORNI"]
+            .sum()
+            .reset_index()
+            .sort_values("GIORNI", ascending=False)
+        )
+        fig_mon_pie = px.pie(
+            df_top_p,
+            names="PROGETTO",
+            values="GIORNI",
+            title="Distribuzione Quota Totale per Commessa",
+            hole=0.45,
+            template="plotly_white",
+            height=450,
+        )
+        st.plotly_chart(
+            fig_mon_pie, use_container_width=True, config=PLOTLY_CONFIG
+        )
 
 elif vista == "Avanzamento":
     if portfolio_filtrato.empty:
