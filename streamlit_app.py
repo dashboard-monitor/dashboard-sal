@@ -2228,8 +2228,8 @@ elif vista == "Effort & Carico di Lavoro":
 
     st.markdown("---")
 
-    # GRAFICI 1 & 2: Volumi e Trend (Letti da colonne M, N, O)
-    st.markdown("### 📊 Volumi Mensili e Trend dei Giorni Interi Ufficiali")
+    # GRAFICI 1 & 2: Volumi e Trend dei Giorni interi lavorativi
+    st.markdown("### 📊 Volumi e Trend dei Giorni interi lavorativi")
 
     col_chart1, col_chart2 = st.columns(2)
 
@@ -2284,11 +2284,96 @@ elif vista == "Effort & Carico di Lavoro":
             hovermode="x unified",
             xaxis_title="Periodo Mensile",
             yaxis_title="Giorni Interi Lavorati",
-            title="Andamento Storico Ufficiale",
+            title="Andamento Storico Ufficiali",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             template="plotly_white",
         )
         st.plotly_chart(fig_mon_line, use_container_width=True, config=PLOTLY_CONFIG)
+
+    st.markdown("---")
+
+    # --- CALCOLO E GRAFICI SATURAZIONE PROGETTI (%) ---
+    st.markdown("### 📈 Volumi e Trend del grado di saturazione dei progetti")
+
+    # Aggregazione giorni effettivi per Mese e Team
+    df_sat_db = df_db_filt.groupby(["PERIODO", "TEAM", "SORT_KEY"], as_index=False)["GIORNI"].sum()
+    df_sat_db.rename(columns={"GIORNI": "GIORNI_EFFETTIVI"}, inplace=True)
+
+    # Merge con i volumi ufficiali
+    df_sat_merged = pd.merge(
+        df_tot_filt[["PERIODO", "TEAM", "SORT_KEY", "GIORNI_LAVORATI_UFFICIALI"]],
+        df_sat_db,
+        on=["PERIODO", "TEAM", "SORT_KEY"],
+        how="left",
+    )
+    df_sat_merged["GIORNI_EFFETTIVI"] = df_sat_merged["GIORNI_EFFETTIVI"].fillna(0)
+    df_sat_merged["SATURAZIONE_PCT"] = np.where(
+        df_sat_merged["GIORNI_LAVORATI_UFFICIALI"] > 0,
+        (df_sat_merged["GIORNI_EFFETTIVI"] / df_sat_merged["GIORNI_LAVORATI_UFFICIALI"]) * 100,
+        0.0,
+    )
+    df_sat_merged = df_sat_merged.sort_values("SORT_KEY")
+
+    col_sat1, col_sat2 = st.columns(2)
+
+    with col_sat1:
+        fig_sat_bar = go.Figure()
+        for team_name in team_cap_sel:
+            df_s = df_sat_merged[df_sat_merged["TEAM"] == team_name]
+            fig_sat_bar.add_trace(
+                go.Bar(
+                    x=df_s["PERIODO"],
+                    y=df_s["SATURAZIONE_PCT"],
+                    name=f"{team_name}",
+                    marker_color=COLORI_TEAM.get(team_name, "#2563EB"),
+                    text=df_s["SATURAZIONE_PCT"].apply(lambda v: f"{v:.1f}%"),
+                    textposition="auto",
+                )
+            )
+        fig_sat_bar.update_xaxes(type="category")
+        fig_sat_bar.update_yaxes(title="Saturazione (%)", ticksuffix="%")
+        fig_sat_bar.update_layout(
+            barmode="group",
+            height=400,
+            hovermode="x unified",
+            xaxis_title="Periodo Mensile",
+            title="Saturazione Progetti (Istogramma %)",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            template="plotly_white",
+        )
+        st.plotly_chart(fig_sat_bar, use_container_width=True, config=PLOTLY_CONFIG)
+
+    with col_sat2:
+        fig_sat_line = go.Figure()
+        for team_name in team_cap_sel:
+            df_s = df_sat_merged[df_sat_merged["TEAM"] == team_name]
+            fig_sat_line.add_trace(
+                go.Scatter(
+                    x=df_s["PERIODO"],
+                    y=df_s["SATURAZIONE_PCT"],
+                    name=f"Trend {team_name}",
+                    mode="lines+markers",
+                    line=dict(
+                        width=3,
+                        color=COLORI_TEAM.get(team_name, "#2563EB"),
+                        shape="spline",
+                    ),
+                    marker=dict(size=8),
+                    text=df_s["SATURAZIONE_PCT"].apply(lambda v: f"{v:.1f}%"),
+                    hovertemplate="%{text}",
+                )
+            )
+        fig_sat_line.update_xaxes(type="category")
+        fig_sat_line.update_yaxes(title="Saturazione (%)", ticksuffix="%")
+        fig_sat_line.update_layout(
+            height=400,
+            hovermode="x unified",
+            xaxis_title="Periodo Mensile",
+            title="Andamento Storico Saturazione (%)",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            template="plotly_white",
+        )
+        st.plotly_chart(fig_sat_line, use_container_width=True, config=PLOTLY_CONFIG)
 
     st.markdown("---")
 
