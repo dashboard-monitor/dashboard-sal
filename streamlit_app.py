@@ -816,7 +816,7 @@ def estrai_dati_monitor_mensile(fogli):
 
         df_tot_long = df_tot_long[df_tot_long["MESE_NUM"] > 0]
         df_tot_long["SORT_KEY"] = df_tot_long["ANNO"] * 100 + df_tot_long["MESE_NUM"]
-        df_tot_long["PERIODO"] = df_tot_long["MESE_NOME"].str.capitalize() + " " + df_tot_long["ANNO"].astype(str)
+        df_tot_long["PERIODO"] = df_tot_long["MESE_NOME"].astype(str).str.capitalize() + " " + df_tot_long["ANNO"].astype(str)
     else:
         df_tot_long = pd.DataFrame()
 
