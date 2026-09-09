@@ -2246,7 +2246,7 @@ elif vista == "Effort & Carico di Lavoro":
                     y=df_t["GIORNI_LAVORATI_UFFICIALI"],
                     name=f"{team_name}",
                     marker_color=COLORI_TEAM.get(team_name, "#2563EB"),
-                    text=df_t["GIORNI_LAVORATI_UFFICIALI"].round(0),
+                    text=df_t["GIORNI_LAVORATI_UFFICIALI"].round(1),
                     textposition="auto",
                 )
             )
@@ -2298,11 +2298,11 @@ elif vista == "Effort & Carico di Lavoro":
     # --- CALCOLO E GRAFICI SATURAZIONE PROGETTI (%) ---
     st.markdown("### 📈 Incidenza e Trend di Saturazione Progetti")
 
-    # Aggregazione giorni effettivi per Mese e Team
+    # Aggregazione giorni effettivi di progetto per Mese e Team (Colonne A:G)
     df_sat_db = df_db_filt.groupby(["PERIODO", "TEAM", "SORT_KEY"], as_index=False)["GIORNI"].sum()
     df_sat_db.rename(columns={"GIORNI": "GIORNI_EFFETTIVI"}, inplace=True)
 
-    # Merge con i volumi ufficiali
+    # Merge con i giorni lavorati mensili ufficiali (Colonna L per EPAL, Colonna M per MGIO)
     df_sat_merged = pd.merge(
         df_tot_filt[["PERIODO", "TEAM", "SORT_KEY", "GIORNI_LAVORATI_UFFICIALI"]],
         df_sat_db,
@@ -2310,6 +2310,8 @@ elif vista == "Effort & Carico di Lavoro":
         how="left",
     )
     df_sat_merged["GIORNI_EFFETTIVI"] = df_sat_merged["GIORNI_EFFETTIVI"].fillna(0)
+
+    # Calcolo percentuale: (Giorni effettivi di progetto / Giorni lavorati ufficiali nel mese) * 100
     df_sat_merged["SATURAZIONE_PCT"] = np.where(
         df_sat_merged["GIORNI_LAVORATI_UFFICIALI"] > 0,
         (df_sat_merged["GIORNI_EFFETTIVI"] / df_sat_merged["GIORNI_LAVORATI_UFFICIALI"]) * 100,
