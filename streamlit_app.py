@@ -2214,18 +2214,18 @@ elif vista == "Effort & Carico di Lavoro":
     num_teams = len(team_cap_sel)
     if num_teams == 2:
         tot_interi = df_tot_filt.drop_duplicates(subset=["PERIODO"])["TOTALE_MESE"].sum()
-        label_interi = "Giorni Interi Complessivi"
+        label_interi = "Giorni lavorati EPAL+MGIO"
     else:
         team_singolo = team_cap_sel[0]
         tot_interi = df_tot_filt["GIORNI_LAVORATI_UFFICIALI"].sum()
-        label_interi = f"Giorni Interi {team_singolo}"
+        label_interi = f"Giorni lavorati {team_singolo}"
 
     tot_effettivi = df_db_filt["GIORNI"].sum()
     sat_pct = (tot_effettivi / tot_interi * 100) if tot_interi > 0 else 0.0
 
     # RENDERING I 3 RIQUADRI AFFIANCATI
     c1, c2, c3 = st.columns(3)
-    c1.metric(label_interi, f"{tot_interi:.0f} gg")
+    c1.metric(label_interi, f"{tot_interi:.1f} gg")
     c2.metric("Giorni Effettivi Progetti", f"{tot_effettivi:.1f} gg")
     c3.metric("Saturazione Progetti", f"{sat_pct:.1f}%")
 
@@ -2408,13 +2408,14 @@ elif vista == "Effort & Carico di Lavoro":
                 barmode="stack",
                 category_orders={"PERIODO": ordine_mesi},
                 template="plotly_white",
-                height=480,
+                height=520,
             )
-            fig_mon_proj.update_xaxes(type="category", title="Periodo Mensile")
+            fig_mon_proj.update_xaxes(type="category", title="")
             fig_mon_proj.update_yaxes(title="Giorni lavorati")
             fig_mon_proj.update_layout(
                 legend_title_text="Commessa",
-                legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5),
+                legend=dict(orientation="h", yanchor="top", y=-0.35, xanchor="center", x=0.5),
+                margin=dict(b=140, t=60, l=20, r=20),
             )
             st.plotly_chart(fig_mon_proj, use_container_width=True, config=PLOTLY_CONFIG)
 
