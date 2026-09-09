@@ -2437,7 +2437,7 @@ elif vista == "Effort & Carico di Lavoro":
                 insidetextorientation="horizontal"
             )
             fig_mon_pie.update_layout(
-                title=dict(font=dict(size=14), y=0.96),
+                title=dict(font=dict(size=16), y=0.96),
                 margin=dict(t=60, b=20, l=10, r=10)
             )
             st.plotly_chart(fig_mon_pie, use_container_width=True, config=PLOTLY_CONFIG)
