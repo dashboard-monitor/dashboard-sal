@@ -2423,10 +2423,13 @@ elif vista == "Effort & Carico di Lavoro":
                 df_top_p,
                 names="PROGETTO",
                 values="GIORNI",
-                title="Ripartizione percentuale dei giorni lavorati per commessa",
+                title="Ripartizione percentuale dei giorni<br>lavorati per commessa",
                 hole=0.45,
                 template="plotly_white",
                 height=480,
+            )
+            fig_mon_pie.update_layout(
+                title=dict(font=dict(size=15))
             )
             st.plotly_chart(fig_mon_pie, use_container_width=True, config=PLOTLY_CONFIG)
 
