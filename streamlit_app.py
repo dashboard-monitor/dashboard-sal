@@ -2208,7 +2208,7 @@ elif vista == "Effort & Carico di Lavoro":
     if progetto_cap_sel:
         df_db_filt = df_db_filt[df_db_filt["PROGETTO"].isin(progetto_cap_sel)].copy()
 
-    st.subheader("📅 Consuntivo Effort & Carico di Lavoro Mensile")
+    st.subheader("📅 Consuntivo Effort & Carico di lavoro")
 
     # CALCOLO METRICHE PER I 3 RIQUADRI
     num_teams = len(team_cap_sel)
@@ -2387,7 +2387,8 @@ elif vista == "Effort & Carico di Lavoro":
     if df_db_filt.empty:
         st.info("Nessun dettaglio attività disponibile per i filtri selezionati.")
     else:
-        col_mon_left, col_mon_right = st.columns([2, 1])
+        # Rapporto riequilibrato (1.25 a 1) per dare più larghezza al grafico a torta
+        col_mon_left, col_mon_right = st.columns([1.25, 1])
 
         df_m_p = df_db_filt.groupby(["PERIODO", "SORT_KEY", "PROGETTO"], as_index=False)["GIORNI"].sum()
 
@@ -2428,8 +2429,15 @@ elif vista == "Effort & Carico di Lavoro":
                 template="plotly_white",
                 height=480,
             )
+            # Posiziona le etichette dentro e riduce i margini superiori per evitare sovrapposizioni col titolo
+            fig_mon_pie.update_traces(
+                textposition="inside",
+                textinfo="percent",
+                insidetextorientation="horizontal"
+            )
             fig_mon_pie.update_layout(
-                title=dict(font=dict(size=15))
+                title=dict(font=dict(size=14), y=0.96),
+                margin=dict(t=60, b=20, l=10, r=10)
             )
             st.plotly_chart(fig_mon_pie, use_container_width=True, config=PLOTLY_CONFIG)
 
