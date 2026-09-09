@@ -2257,7 +2257,7 @@ elif vista == "Effort & Carico di Lavoro":
             hovermode="x unified",
             xaxis_title="Periodo Mensile",
             yaxis_title="Giorni Interi Lavorati",
-            title="Volumi Ufficiali (Istogramma)",
+            title="Volumi Mensili Giorni Interi Lavorati",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             template="plotly_white",
         )
@@ -2287,7 +2287,7 @@ elif vista == "Effort & Carico di Lavoro":
             hovermode="x unified",
             xaxis_title="Periodo Mensile",
             yaxis_title="Giorni Interi Lavorati",
-            title="Andamento Storico Ufficiali",
+            title="Andamento Storico Giorni Interi Lavorati",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             template="plotly_white",
         )
@@ -2296,7 +2296,7 @@ elif vista == "Effort & Carico di Lavoro":
     st.markdown("---")
 
     # --- CALCOLO E GRAFICI SATURAZIONE PROGETTI (%) ---
-    st.markdown("### 📈 Volumi e Trend del grado di saturazione dei progetti")
+    st.markdown("### 📈 Incidenza e Trend di Saturazione Progetti")
 
     # Aggregazione giorni effettivi per Mese e Team
     df_sat_db = df_db_filt.groupby(["PERIODO", "TEAM", "SORT_KEY"], as_index=False)["GIORNI"].sum()
@@ -2340,7 +2340,7 @@ elif vista == "Effort & Carico di Lavoro":
             height=400,
             hovermode="x unified",
             xaxis_title="Periodo Mensile",
-            title="Saturazione Progetti (Istogramma %)",
+            title="Incidenza Progetti sui Giorni Interi Lavorati (%)",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             template="plotly_white",
         )
@@ -2372,7 +2372,7 @@ elif vista == "Effort & Carico di Lavoro":
             height=400,
             hovermode="x unified",
             xaxis_title="Periodo Mensile",
-            title="Andamento Storico Saturazione (%)",
+            title="Andamento Storico Saturazione Progetti",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             template="plotly_white",
         )
@@ -2403,14 +2403,14 @@ elif vista == "Effort & Carico di Lavoro":
                 x="PERIODO",
                 y="GIORNI",
                 color="COMMESSA_DISPLAY",
-                title=("Scomposizione Frazioni Lavorate (Top 3 Commesse)"),
+                title="Distribuzione mensile dei giorni lavorati (Focus Top Commesse)",
                 barmode="stack",
                 category_orders={"PERIODO": ordine_mesi},
                 template="plotly_white",
                 height=480,
             )
             fig_mon_proj.update_xaxes(type="category", title="Periodo Mensile")
-            fig_mon_proj.update_yaxes(title="Frazioni Lavorate")
+            fig_mon_proj.update_yaxes(title="Giorni lavorati")
             fig_mon_proj.update_layout(
                 legend_title_text="Commessa",
                 legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5),
@@ -2423,7 +2423,7 @@ elif vista == "Effort & Carico di Lavoro":
                 df_top_p,
                 names="PROGETTO",
                 values="GIORNI",
-                title="Distribuzione & Quota per Commessa",
+                title="Ripartizione percentuale dei giorni lavorati per commessa",
                 hole=0.45,
                 template="plotly_white",
                 height=480,
