@@ -769,7 +769,7 @@ def estrai_dati_monitor_mensile(fogli):
 
     # Converte i MINUTI in formato numerico e RICALCOLA le frazioni di giorno su base fissa a 480 minuti (8 ore)
     df_db["MINUTI"] = serie_numerica(df_db["MINUTI"])
-    df_db["GIORNI"] = df_db["MINUTI"] / 480.0
+    df_db["GIORNI"] = serie_numerica(df_db["GIORNI"])
 
     df_db["PROGETTO"] = df_db["PROGETTO"].astype(str).str.strip()
     df_db["TEAM"] = df_db["TEAM"].astype(str).str.strip().str.upper()
