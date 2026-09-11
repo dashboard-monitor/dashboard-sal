@@ -2425,15 +2425,37 @@ elif vista == "Effort & Carico di Lavoro":
         st.markdown("---")
         st.markdown("### 📋 Registro Dettagliato Attività per Mese")
 
-        clienti_disponibili = ["Tutti i Clienti"] + sorted(df_db_filt["PROGETTO"].unique().tolist())
+        # 1. Raccoglie TUTTI i progetti censiti nel sistema (attivi, storici e completati)
+        set_progetti_tutti = set(df_db_mon["PROGETTO"].dropna().unique())
+        if "portfolio_tutti" in locals() and not portfolio_tutti.empty:
+            set_progetti_tutti.update(portfolio_tutti["Progetto"].dropna().unique())
+
+        clienti_disponibili = ["Tutti i Clienti"] + sorted(
+            [p for p in set_progetti_tutti if str(p).strip() and str(p).lower() not in ["nan", "none", ""]]
+        )
         cliente_scelto = st.selectbox("🔍 Cerca Cliente / Progetto:", clienti_disponibili, key="filtro_cliente_reg")
 
+        # 2. Logica di filtraggio cliente
         if cliente_scelto != "Tutti i Clienti":
-            df_reg_step1 = df_db_filt[df_db_filt["PROGETTO"] == cliente_scelto]
+            # Estrae lo storico del cliente selezionato per il team attivo
+            df_base_cliente = df_db_mon[
+                (df_db_mon["TEAM"].isin(team_cap_sel)) & 
+                (df_db_mon["PROGETTO"] == cliente_scelto)
+            ].copy()
+            
+            # Se ci sono dati nell'intervallo temporale selezionato applica il filtro, altrimenti mostra l'intero storico
+            df_in_periodo = df_base_cliente[df_base_cliente["PERIODO"].isin(periodi_sel)].copy()
+            if not df_in_periodo.empty:
+                df_reg_step1 = df_in_periodo
+            else:
+                df_reg_step1 = df_base_cliente
         else:
             df_reg_step1 = df_db_filt
 
-        attivita_disponibili = ["Tutte le Attività"] + sorted(df_reg_step1["ATTIVITÀ"].unique().tolist())
+        # 3. Filtro dinamico delle Attività
+        attivita_disponibili = ["Tutte le Attività"] + sorted(
+            [a for a in df_reg_step1["ATTIVITÀ"].dropna().unique() if str(a).strip()]
+        )
         attivita_scelta = st.selectbox("📌 Filtra per Attività svolta:", attivita_disponibili, key="filtro_attivita_reg")
 
         if attivita_scelta != "Tutte le Attività":
