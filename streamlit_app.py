@@ -727,20 +727,24 @@ def estrai_dati_monitor_mensile(fogli):
 
     def parsing_mese_anno(val_m, val_a_raw):
         if pd.isna(val_m):
-            return "", 0, 2025
+            return "", 0, 2025, ""
 
         if isinstance(val_m, (datetime, pd.Timestamp)):
             m_num = val_m.month
             anno = val_m.year
+            giorno = val_m.day
             mesi_inv = {9: "settembre", 10: "ottobre", 11: "novembre", 12: "dicembre", 1: "gennaio", 2: "febbraio", 3: "marzo", 4: "aprile", 5: "maggio", 6: "giugno", 7: "luglio", 8: "agosto"}
-            return mesi_inv.get(m_num, ""), m_num, anno
+            m_nome = mesi_inv.get(m_num, "")
+            giorno_str = f"{giorno} {m_nome}" if giorno else m_nome
+            return m_nome, m_num, anno, giorno_str
 
         s = str(val_m).strip().lower()
         if re.match(r"^\d{4}-\d{2}-\d{2}", s):
             try:
                 dt = pd.to_datetime(s)
                 mesi_inv = {9: "settembre", 10: "ottobre", 11: "novembre", 12: "dicembre", 1: "gennaio", 2: "febbraio", 3: "marzo", 4: "aprile", 5: "maggio", 6: "giugno", 7: "luglio", 8: "agosto"}
-                return mesi_inv.get(dt.month, ""), dt.month, dt.year
+                m_nome = mesi_inv.get(dt.month, "")
+                return m_nome, dt.month, dt.year, f"{dt.day} {m_nome}"
             except Exception:
                 pass
 
@@ -761,13 +765,15 @@ def estrai_dati_monitor_mensile(fogli):
                 m_num = num
                 break
 
-        return m_nome, m_num, anno
+        match_day = re.search(r"^\b(\d{1,2})\b", s)
+        giorno_str = f"{match_day.group(1)} {m_nome}" if (match_day and m_nome) else (s if s else m_nome)
+
+        return m_nome, m_num, anno, giorno_str
 
     # 1. Dettaglio Analitico Attività (Colonne A:G)
     df_db = df_mon.iloc[:, :7].copy()
     df_db.columns = ["ANNO_RAW", "MESE", "PROGETTO", "TEAM", "ATTIVITÀ", "MINUTI", "GIORNI"]
 
-    # Converte i MINUTI in formato numerico e RICALCOLA le frazioni di giorno su base fissa a 480 minuti (8 ore)
     df_db["MINUTI"] = serie_numerica(df_db["MINUTI"])
     df_db["GIORNI"] = serie_numerica(df_db["GIORNI"])
 
@@ -781,11 +787,13 @@ def estrai_dati_monitor_mensile(fogli):
     df_db["MESE_NOME"] = [p[0] for p in parsed_db]
     df_db["MESE_NUM"] = [p[1] for p in parsed_db]
     df_db["ANNO"] = [p[2] for p in parsed_db]
+    df_db["GIORNO_MESE"] = [p[3] for p in parsed_db]
 
     df_db["SORT_KEY"] = df_db["ANNO"] * 100 + df_db["MESE_NUM"]
     df_db["PERIODO"] = df_db["MESE_NOME"].str.capitalize() + " " + df_db["ANNO"].astype(str)
+    df_db["DATA_COMPLETA"] = df_db["GIORNO_MESE"].str.capitalize() + " " + df_db["ANNO"].astype(str)
 
-    # 2. Riepilogo Ufficiale Giorni Interi Lavorati (Colonne J:N -> indici 9 a 14)
+    # 2. Riepilogo Ufficiale Giorni Interi & Saturazioni (Colonne J:AB)
     if df_mon.shape[1] >= 14:
         df_tot_sub = df_mon.iloc[:, 9:14].copy()
         df_tot_sub.columns = ["ANNO_C", "MESE_C", "EPAL", "MGIO", "TOTALE_MESE"]
@@ -794,19 +802,33 @@ def estrai_dati_monitor_mensile(fogli):
         df_tot_sub["MGIO"] = serie_numerica(df_tot_sub["MGIO"])
         df_tot_sub["TOTALE_MESE"] = serie_numerica(df_tot_sub["TOTALE_MESE"])
 
+        # Lettura saturazioni ufficiali da colonne AA (index 26) e AB (index 27)
+        if df_mon.shape[1] >= 28:
+            df_tot_sub["SAT_EPAL"] = percentuale_da_excel(df_mon.iloc[:, 26])
+            df_tot_sub["SAT_MGIO"] = percentuale_da_excel(df_mon.iloc[:, 27])
+        else:
+            df_tot_sub["SAT_EPAL"] = 0.0
+            df_tot_sub["SAT_MGIO"] = 0.0
+
+        # Calcolo giorni effettivi ufficiali (Giorni Lavorati * % Saturazione)
+        df_tot_sub["PROJ_EPAL"] = df_tot_sub["EPAL"] * (df_tot_sub["SAT_EPAL"] / 100.0)
+        df_tot_sub["PROJ_MGIO"] = df_tot_sub["MGIO"] * (df_tot_sub["SAT_MGIO"] / 100.0)
+
         df_tot_raw = df_tot_sub[
             (df_tot_sub["MESE_C"].notna())
             & (~df_tot_sub["MESE_C"].astype(str).str.upper().str.contains("TOTALE|ANNO|MESE|GIORNI"))
             & (df_tot_sub["MESE_C"].astype(str).str.strip() != "")
         ].copy()
 
-        df_tot_long = df_tot_raw.melt(
-            id_vars=["ANNO_C", "MESE_C", "TOTALE_MESE"],
-            value_vars=["EPAL", "MGIO"],
-            var_name="TEAM",
-            value_name="GIORNI_LAVORATI_UFFICIALI",
-        )
-        df_tot_long["TEAM"] = df_tot_long["TEAM"].astype(str).str.strip().str.upper()
+        epal_df = df_tot_raw[["ANNO_C", "MESE_C", "TOTALE_MESE", "EPAL", "SAT_EPAL", "PROJ_EPAL"]].copy()
+        epal_df.columns = ["ANNO_C", "MESE_C", "TOTALE_MESE", "GIORNI_LAVORATI_UFFICIALI", "SATURAZIONE_UFFICIALE", "GIORNI_PROGETTI_UFFICIALI"]
+        epal_df["TEAM"] = "EPAL"
+
+        mgio_df = df_tot_raw[["ANNO_C", "MESE_C", "TOTALE_MESE", "MGIO", "SAT_MGIO", "PROJ_MGIO"]].copy()
+        mgio_df.columns = ["ANNO_C", "MESE_C", "TOTALE_MESE", "GIORNI_LAVORATI_UFFICIALI", "SATURAZIONE_UFFICIALE", "GIORNI_PROGETTI_UFFICIALI"]
+        mgio_df["TEAM"] = "MGIO"
+
+        df_tot_long = pd.concat([epal_df, mgio_df], ignore_index=True)
         df_tot_long = df_tot_long.dropna(subset=["GIORNI_LAVORATI_UFFICIALI"])
 
         parsed_tot = [parsing_mese_anno(m, a) for m, a in zip(df_tot_long["MESE_C"], df_tot_long["ANNO_C"])]
@@ -2161,7 +2183,6 @@ elif vista == "Effort & Carico di Lavoro":
     st.sidebar.markdown("---")
     st.sidebar.subheader("Filtri Analitici")
 
-    # 1. Automazione Selezione Team
     if scope == "EPAL":
         team_cap_sel = ["EPAL"]
     elif scope == "MGIO":
@@ -2169,7 +2190,6 @@ elif vista == "Effort & Carico di Lavoro":
     else:
         team_cap_sel = ["EPAL", "MGIO"]
 
-    # 2. Slider di Scorrimento Temporale
     periodi_ordinati = df_tot_mon.sort_values("SORT_KEY")["PERIODO"].unique().tolist()
 
     if periodi_ordinati:
@@ -2185,7 +2205,6 @@ elif vista == "Effort & Carico di Lavoro":
     else:
         periodi_sel = []
 
-    # 3. Filtro Progetto
     progetto_cap_sel = st.sidebar.multiselect(
         "Isola singole Commesse (applica solo a scomposizione)",
         options=sorted(df_db_mon["PROGETTO"].unique()),
@@ -2193,13 +2212,11 @@ elif vista == "Effort & Carico di Lavoro":
         key="progetto_cap_sel",
     )
 
-    # Dati UFFICIALI (Interi)
     df_tot_filt = df_tot_mon[
         (df_tot_mon["TEAM"].isin(team_cap_sel))
         & (df_tot_mon["PERIODO"].isin(periodi_sel))
     ].sort_values("SORT_KEY")
 
-    # Dati DETTAGLIO (Effettivi Progetti)
     df_db_filt = df_db_mon[
         (df_db_mon["TEAM"].isin(team_cap_sel))
         & (df_db_mon["PERIODO"].isin(periodi_sel))
@@ -2210,20 +2227,20 @@ elif vista == "Effort & Carico di Lavoro":
 
     st.subheader("📅 Consuntivo Effort & Carico di lavoro")
 
-    # CALCOLO METRICHE PER I 3 RIQUADRI
+    # METRICHE CARD (DA TABELLA UFFICIALE)
     num_teams = len(team_cap_sel)
     if num_teams == 2:
         tot_interi = df_tot_filt.drop_duplicates(subset=["PERIODO"])["TOTALE_MESE"].sum()
         label_interi = "Giorni lavorati EPAL+MGIO"
+        tot_effettivi = df_tot_filt["GIORNI_PROGETTI_UFFICIALI"].sum()
     else:
         team_singolo = team_cap_sel[0]
         tot_interi = df_tot_filt["GIORNI_LAVORATI_UFFICIALI"].sum()
         label_interi = f"Giorni lavorati {team_singolo}"
+        tot_effettivi = df_tot_filt["GIORNI_PROGETTI_UFFICIALI"].sum()
 
-    tot_effettivi = df_db_filt["GIORNI"].sum()
     sat_pct = (tot_effettivi / tot_interi * 100) if tot_interi > 0 else 0.0
 
-    # RENDERING I 3 RIQUADRI AFFIANCATI
     c1, c2, c3 = st.columns(3)
     c1.metric(label_interi, f"{tot_interi:.1f} gg")
     c2.metric("Giorni Effettivi Progetti", f"{tot_effettivi:.1f} gg")
@@ -2231,8 +2248,7 @@ elif vista == "Effort & Carico di Lavoro":
 
     st.markdown("---")
 
-    # GRAFICI 1 & 2: Volumi e Trend dei Giorni interi lavorativi
-    st.markdown("### 📊 Volumi e Trend dei Giorni interi lavorativi")
+    st.markdown("### 📊 Volumi e Trend dei Giorni lavorati")
 
     col_chart1, col_chart2 = st.columns(2)
 
@@ -2256,8 +2272,8 @@ elif vista == "Effort & Carico di Lavoro":
             height=400,
             hovermode="x unified",
             xaxis_title="Periodo Mensile",
-            yaxis_title="Giorni Interi Lavorati",
-            title="Volumi Mensili Giorni Interi Lavorati",
+            yaxis_title="Giorni Lavorati",
+            title="Volumi mensili Giorni lavorati",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             template="plotly_white",
         )
@@ -2282,12 +2298,12 @@ elif vista == "Effort & Carico di Lavoro":
                 )
             )
         fig_mon_line.update_xaxes(type="category")
+        fig_mon_line.update_yaxes(rangemode="tozero", title="Giorni Lavorati")
         fig_mon_line.update_layout(
             height=400,
             hovermode="x unified",
             xaxis_title="Periodo Mensile",
-            yaxis_title="Giorni Interi Lavorati",
-            title="Andamento Storico Giorni Interi Lavorati",
+            title="Andamento storico Giorni lavorati",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             template="plotly_white",
         )
@@ -2295,43 +2311,22 @@ elif vista == "Effort & Carico di Lavoro":
 
     st.markdown("---")
 
-    # --- CALCOLO E GRAFICI SATURAZIONE PROGETTI (%) ---
+    # GRAFICI SATURAZIONE PROGETTI (%) USA SATURAZIONE UFFICIALE (COLONNE AA/AB)
     st.markdown("### 📈 Incidenza e Trend di Saturazione Progetti")
-
-    # Aggregazione giorni effettivi di progetto per Mese e Team (Colonne A:G)
-    df_sat_db = df_db_filt.groupby(["PERIODO", "TEAM", "SORT_KEY"], as_index=False)["GIORNI"].sum()
-    df_sat_db.rename(columns={"GIORNI": "GIORNI_EFFETTIVI"}, inplace=True)
-
-    # Merge con i giorni lavorati mensili ufficiali (Colonna L per EPAL, Colonna M per MGIO)
-    df_sat_merged = pd.merge(
-        df_tot_filt[["PERIODO", "TEAM", "SORT_KEY", "GIORNI_LAVORATI_UFFICIALI"]],
-        df_sat_db,
-        on=["PERIODO", "TEAM", "SORT_KEY"],
-        how="left",
-    )
-    df_sat_merged["GIORNI_EFFETTIVI"] = df_sat_merged["GIORNI_EFFETTIVI"].fillna(0)
-
-    # Calcolo percentuale: (Giorni effettivi di progetto / Giorni lavorati ufficiali nel mese) * 100
-    df_sat_merged["SATURAZIONE_PCT"] = np.where(
-        df_sat_merged["GIORNI_LAVORATI_UFFICIALI"] > 0,
-        (df_sat_merged["GIORNI_EFFETTIVI"] / df_sat_merged["GIORNI_LAVORATI_UFFICIALI"]) * 100,
-        0.0,
-    )
-    df_sat_merged = df_sat_merged.sort_values("SORT_KEY")
 
     col_sat1, col_sat2 = st.columns(2)
 
     with col_sat1:
         fig_sat_bar = go.Figure()
         for team_name in team_cap_sel:
-            df_s = df_sat_merged[df_sat_merged["TEAM"] == team_name]
+            df_s = df_tot_filt[df_tot_filt["TEAM"] == team_name]
             fig_sat_bar.add_trace(
                 go.Bar(
                     x=df_s["PERIODO"],
-                    y=df_s["SATURAZIONE_PCT"],
+                    y=df_s["SATURAZIONE_UFFICIALE"],
                     name=f"{team_name}",
                     marker_color=COLORI_TEAM.get(team_name, "#2563EB"),
-                    text=df_s["SATURAZIONE_PCT"].apply(lambda v: f"{v:.1f}%"),
+                    text=df_s["SATURAZIONE_UFFICIALE"].apply(lambda v: f"{v:.1f}%"),
                     textposition="auto",
                 )
             )
@@ -2342,7 +2337,7 @@ elif vista == "Effort & Carico di Lavoro":
             height=400,
             hovermode="x unified",
             xaxis_title="Periodo Mensile",
-            title="Incidenza Progetti sui Giorni Interi Lavorati (%)",
+            title="Incidenza progetti sui Giorni lavorati (%)",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             template="plotly_white",
         )
@@ -2351,11 +2346,11 @@ elif vista == "Effort & Carico di Lavoro":
     with col_sat2:
         fig_sat_line = go.Figure()
         for team_name in team_cap_sel:
-            df_s = df_sat_merged[df_sat_merged["TEAM"] == team_name]
+            df_s = df_tot_filt[df_tot_filt["TEAM"] == team_name]
             fig_sat_line.add_trace(
                 go.Scatter(
                     x=df_s["PERIODO"],
-                    y=df_s["SATURAZIONE_PCT"],
+                    y=df_s["SATURAZIONE_UFFICIALE"],
                     name=f"Trend {team_name}",
                     mode="lines+markers",
                     line=dict(
@@ -2364,17 +2359,17 @@ elif vista == "Effort & Carico di Lavoro":
                         shape="spline",
                     ),
                     marker=dict(size=8),
-                    text=df_s["SATURAZIONE_PCT"].apply(lambda v: f"{v:.1f}%"),
+                    text=df_s["SATURAZIONE_UFFICIALE"].apply(lambda v: f"{v:.1f}%"),
                     hovertemplate="%{text}",
                 )
             )
         fig_sat_line.update_xaxes(type="category")
-        fig_sat_line.update_yaxes(title="Saturazione (%)", ticksuffix="%")
+        fig_sat_line.update_yaxes(rangemode="tozero", title="Saturazione (%)", ticksuffix="%")
         fig_sat_line.update_layout(
             height=400,
             hovermode="x unified",
             xaxis_title="Periodo Mensile",
-            title="Andamento Storico Saturazione Progetti",
+            title="Andamento storico Saturazione progetti",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             template="plotly_white",
         )
@@ -2382,14 +2377,12 @@ elif vista == "Effort & Carico di Lavoro":
 
     st.markdown("---")
 
-    # GRAFICI 3 & 4: Allocazione Effort per Commessa
     st.markdown("### 🧩 Allocazione Effort per Commessa")
     st.caption("*Nota: La scomposizione per commessa si basa sulle singole frazioni giornaliere registrate a calendario.*")
 
     if df_db_filt.empty:
         st.info("Nessun dettaglio attività disponibile per i filtri selezionati.")
     else:
-        # Rapporto riequilibrato (1.25 a 1) per dare più larghezza al grafico a torta
         col_mon_left, col_mon_right = st.columns([1.25, 1])
 
         df_m_p = df_db_filt.groupby(["PERIODO", "SORT_KEY", "PROGETTO"], as_index=False)["GIORNI"].sum()
@@ -2432,7 +2425,6 @@ elif vista == "Effort & Carico di Lavoro":
                 template="plotly_white",
                 height=480,
             )
-            # Posiziona le etichette dentro e riduce i margini superiori per evitare sovrapposizioni col titolo
             fig_mon_pie.update_traces(
                 textposition="inside",
                 textinfo="percent",
@@ -2447,9 +2439,26 @@ elif vista == "Effort & Carico di Lavoro":
         st.markdown("---")
         st.markdown("### 📋 Registro Dettagliato Attività per Mese")
 
+        # FILTRI A TENDINA REGISTRO
+        clienti_disponibili = ["Tutti i Clienti"] + sorted(df_db_filt["PROGETTO"].unique().tolist())
+        cliente_scelto = st.selectbox("🔍 Cerca Cliente / Progetto:", clienti_disponibili, key="filtro_cliente_reg")
+
+        if cliente_scelto != "Tutti i Clienti":
+            df_reg_step1 = df_db_filt[df_db_filt["PROGETTO"] == cliente_scelto]
+        else:
+            df_reg_step1 = df_db_filt
+
+        attivita_disponibili = ["Tutte le Attività"] + sorted(df_reg_step1["ATTIVITÀ"].unique().tolist())
+        attivita_scelta = st.selectbox("📌 Filtra per Attività svolta:", attivita_disponibili, key="filtro_attivita_reg")
+
+        if attivita_scelta != "Tutte le Attività":
+            df_reg_finale = df_reg_step1[df_reg_step1["ATTIVITÀ"] == attivita_scelta]
+        else:
+            df_reg_finale = df_reg_step1
+
         df_tab_dettaglio = (
-            df_db_filt[
-                ["PERIODO", "PROGETTO", "TEAM", "ATTIVITÀ", "MINUTI", "GIORNI", "SORT_KEY"]
+            df_reg_finale[
+                ["DATA_COMPLETA", "PROGETTO", "TEAM", "ATTIVITÀ", "MINUTI", "GIORNI", "SORT_KEY"]
             ]
             .sort_values(["SORT_KEY", "PROGETTO", "TEAM"])
             .drop(columns=["SORT_KEY"])
@@ -2460,7 +2469,7 @@ elif vista == "Effort & Carico di Lavoro":
             use_container_width=True,
             hide_index=True,
             column_config={
-                "PERIODO": st.column_config.TextColumn("Mese / Anno"),
+                "DATA_COMPLETA": st.column_config.TextColumn("Data (Giorno / Mese / Anno)"),
                 "PROGETTO": st.column_config.TextColumn("Progetto / Commessa"),
                 "TEAM": st.column_config.TextColumn("Team"),
                 "ATTIVITÀ": st.column_config.TextColumn("Attività Svolta"),
