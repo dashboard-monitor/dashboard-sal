@@ -726,12 +726,24 @@ def estrai_dati_monitor_mensile(fogli):
         return None, None
 
     def parsing_mese_anno(val_m, val_a_raw):
-        if pd.isna(val_m):
-            return "", 0, 2025, ""
+        # 1. L'anno della Colonna A ha SEMPRE la precedenza assoluta
+        anno = 2025
+        if pd.notna(val_a_raw):
+            try:
+                match_a = re.search(r"\b(20\d{2})\b", str(val_a_raw))
+                if match_a:
+                    anno = int(match_a.group(1))
+                else:
+                    anno = int(float(str(val_a_raw)))
+            except Exception:
+                pass
 
+        if pd.isna(val_m):
+            return "", 0, anno, ""
+
+        # 2. Se la Colonna B è un oggetto Data, estrae mese e giorno ma Mantiene l'Anno della Colonna A
         if isinstance(val_m, (datetime, pd.Timestamp)):
             m_num = val_m.month
-            anno = val_m.year
             giorno = val_m.day
             mesi_inv = {9: "settembre", 10: "ottobre", 11: "novembre", 12: "dicembre", 1: "gennaio", 2: "febbraio", 3: "marzo", 4: "aprile", 5: "maggio", 6: "giugno", 7: "luglio", 8: "agosto"}
             m_nome = mesi_inv.get(m_num, "")
@@ -739,15 +751,6 @@ def estrai_dati_monitor_mensile(fogli):
             return m_nome, m_num, anno, giorno_str
 
         s = str(val_m).strip().lower()
-
-        match_year = re.search(r"\b(20\d{2})\b", str(val_m) + " " + str(val_a_raw))
-        if match_year:
-            anno = int(match_year.group(1))
-        else:
-            try:
-                anno = int(float(str(val_a_raw)))
-            except Exception:
-                anno = 2025
 
         m_nome = ""
         m_num = 0
