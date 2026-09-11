@@ -727,7 +727,7 @@ def estrai_dati_monitor_mensile(fogli):
 
     def parsing_mese_anno(val_m, val_a_raw):
         if pd.isna(val_m):
-            return "", 0, 2026, ""
+            return "", 0, 2025, ""
 
         if isinstance(val_m, (datetime, pd.Timestamp)):
             m_num = val_m.month
@@ -739,7 +739,6 @@ def estrai_dati_monitor_mensile(fogli):
             return m_nome, m_num, anno, giorno_str
 
         s = str(val_m).strip().lower()
-
         if re.match(r"^\d{4}-\d{2}-\d{2}", s):
             try:
                 dt = pd.to_datetime(s)
@@ -756,7 +755,7 @@ def estrai_dati_monitor_mensile(fogli):
             try:
                 anno = int(float(str(val_a_raw)))
             except Exception:
-                anno = 2026
+                anno = 2025
 
         m_nome = ""
         m_num = 0
@@ -766,12 +765,9 @@ def estrai_dati_monitor_mensile(fogli):
                 m_num = num
                 break
 
-        # Estrazione giorno e mese mantenendo la dicitura esatta (es. "1 settembre")
+        # Aggiunta logica per estrarre il giorno (se presente stringa come "1 settembre")
         match_day = re.search(r"^\b(\d{1,2})\b", s)
-        if match_day and m_nome:
-            giorno_str = f"{match_day.group(1)} {m_nome}"
-        else:
-            giorno_str = s if s else m_nome
+        giorno_str = f"{match_day.group(1)} {m_nome}" if (match_day and m_nome) else (s if s else m_nome)
 
         return m_nome, m_num, anno, giorno_str
 
@@ -792,13 +788,15 @@ def estrai_dati_monitor_mensile(fogli):
     df_db["MESE_NOME"] = [p[0] for p in parsed_db]
     df_db["MESE_NUM"] = [p[1] for p in parsed_db]
     df_db["ANNO"] = [p[2] for p in parsed_db]
-    df_db["GIORNO_MESE"] = [p[3] for p in parsed_db]
+    df_db["GIORNO_MESE"] = [p[3] for p in parsed_db] # Nuova colonna derivata
 
     df_db["SORT_KEY"] = df_db["ANNO"] * 100 + df_db["MESE_NUM"]
     df_db["PERIODO"] = df_db["MESE_NOME"].str.capitalize() + " " + df_db["ANNO"].astype(str)
+    
+    # Crea la colonna finale da mostrare in tabella
     df_db["DATA_COMPLETA"] = df_db["GIORNO_MESE"].str.capitalize() + " " + df_db["ANNO"].astype(str)
 
-    # 2. Riepilogo Ufficiale Giorni Interi Lavorati (Colonne J:N)
+    # 2. Riepilogo Ufficiale Giorni Interi Lavorati (Colonne J:N -> indici 9 a 14)
     if df_mon.shape[1] >= 14:
         df_tot_sub = df_mon.iloc[:, 9:14].copy()
         df_tot_sub.columns = ["ANNO_C", "MESE_C", "EPAL", "MGIO", "TOTALE_MESE"]
@@ -2460,7 +2458,7 @@ elif vista == "Effort & Carico di Lavoro":
         st.markdown("---")
         st.markdown("### 📋 Registro Dettagliato Attività per Mese")
 
-        # Menu a tendina 1: Selezione Cliente / Progetto
+        # --- INIZIO NUOVA SEZIONE FILTRI (Tendine in alto) ---
         clienti_disponibili = ["Tutti i Clienti"] + sorted(df_db_filt["PROGETTO"].unique().tolist())
         cliente_scelto = st.selectbox("🔍 Cerca Cliente / Progetto:", clienti_disponibili, key="filtro_cliente_reg")
 
@@ -2469,7 +2467,6 @@ elif vista == "Effort & Carico di Lavoro":
         else:
             df_reg_step1 = df_db_filt
 
-        # Menu a tendina 2: Selezione Attività specifica
         attivita_disponibili = ["Tutte le Attività"] + sorted(df_reg_step1["ATTIVITÀ"].unique().tolist())
         attivita_scelta = st.selectbox("📌 Filtra per Attività svolta:", attivita_disponibili, key="filtro_attivita_reg")
 
@@ -2477,7 +2474,9 @@ elif vista == "Effort & Carico di Lavoro":
             df_reg_finale = df_reg_step1[df_reg_step1["ATTIVITÀ"] == attivita_scelta]
         else:
             df_reg_finale = df_reg_step1
+        # --- FINE SEZIONE FILTRI ---
 
+        # Preparazione DataFrame per la visualizzazione, chiamando la nuova colonna DATA_COMPLETA
         df_tab_dettaglio = (
             df_reg_finale[
                 ["DATA_COMPLETA", "PROGETTO", "TEAM", "ATTIVITÀ", "MINUTI", "GIORNI", "SORT_KEY"]
@@ -2492,7 +2491,7 @@ elif vista == "Effort & Carico di Lavoro":
             hide_index=True,
             column_config={
                 "DATA_COMPLETA": st.column_config.TextColumn("Data (Giorno / Mese / Anno)"),
-                "PROGETTO": st.column_config.TextColumn("Progetto / Cliente"),
+                "PROGETTO": st.column_config.TextColumn("Progetto / Commessa"),
                 "TEAM": st.column_config.TextColumn("Team"),
                 "ATTIVITÀ": st.column_config.TextColumn("Attività Svolta"),
                 "MINUTI": st.column_config.NumberColumn("Minuti", format="%d min"),
