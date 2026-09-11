@@ -765,7 +765,6 @@ def estrai_dati_monitor_mensile(fogli):
                 m_num = num
                 break
 
-        # Aggiunta logica per estrarre il giorno (se presente stringa come "1 settembre")
         match_day = re.search(r"^\b(\d{1,2})\b", s)
         giorno_str = f"{match_day.group(1)} {m_nome}" if (match_day and m_nome) else (s if s else m_nome)
 
@@ -788,16 +787,15 @@ def estrai_dati_monitor_mensile(fogli):
     df_db["MESE_NOME"] = [p[0] for p in parsed_db]
     df_db["MESE_NUM"] = [p[1] for p in parsed_db]
     df_db["ANNO"] = [p[2] for p in parsed_db]
-    df_db["GIORNO_MESE"] = [p[3] for p in parsed_db] # Nuova colonna derivata
+    df_db["GIORNO_MESE"] = [p[3] for p in parsed_db]
 
     df_db["SORT_KEY"] = df_db["ANNO"] * 100 + df_db["MESE_NUM"]
     df_db["PERIODO"] = df_db["MESE_NOME"].str.capitalize() + " " + df_db["ANNO"].astype(str)
-    
-    # Crea la colonna finale da mostrare in tabella
     df_db["DATA_COMPLETA"] = df_db["GIORNO_MESE"].str.capitalize() + " " + df_db["ANNO"].astype(str)
 
-    # 2. Riepilogo Ufficiale Giorni Interi Lavorati (Colonne J:N -> indici 9 a 14)
+    # 2. Riepilogo Ufficiale Giorni Interi & Saturazioni (Colonne J:AB)
     if df_mon.shape[1] >= 14:
+        # Estrazione colonne base J:N (0-indexed: 9:14)
         df_tot_sub = df_mon.iloc[:, 9:14].copy()
         df_tot_sub.columns = ["ANNO_C", "MESE_C", "EPAL", "MGIO", "TOTALE_MESE"]
 
@@ -805,19 +803,37 @@ def estrai_dati_monitor_mensile(fogli):
         df_tot_sub["MGIO"] = serie_numerica(df_tot_sub["MGIO"])
         df_tot_sub["TOTALE_MESE"] = serie_numerica(df_tot_sub["TOTALE_MESE"])
 
+        # Lettura saturazione mensile ufficiale da colonne AA (26) e AB (27) se presenti
+        if df_mon.shape[1] >= 28:
+            sat_epal_mens = percentuale_da_excel(df_mon.iloc[:, 26])
+            sat_mgio_mens = percentuale_da_excel(df_mon.iloc[:, 27])
+        else:
+            sat_epal_mens = pd.Series(0.0, index=df_mon.index)
+            sat_mgio_mens = pd.Series(0.0, index=df_mon.index)
+
+        df_tot_sub["SAT_EPAL"] = sat_epal_mens
+        df_tot_sub["SAT_MGIO"] = sat_mgio_mens
+
+        # Calcolo Giorni Progetto Ufficiali Mensili (Giorni Lavorati * % Saturazione)
+        df_tot_sub["PROJ_EPAL"] = df_tot_sub["EPAL"] * (df_tot_sub["SAT_EPAL"] / 100.0)
+        df_tot_sub["PROJ_MGIO"] = df_tot_sub["MGIO"] * (df_tot_sub["SAT_MGIO"] / 100.0)
+
         df_tot_raw = df_tot_sub[
             (df_tot_sub["MESE_C"].notna())
             & (~df_tot_sub["MESE_C"].astype(str).str.upper().str.contains("TOTALE|ANNO|MESE|GIORNI"))
             & (df_tot_sub["MESE_C"].astype(str).str.strip() != "")
         ].copy()
 
-        df_tot_long = df_tot_raw.melt(
-            id_vars=["ANNO_C", "MESE_C", "TOTALE_MESE"],
-            value_vars=["EPAL", "MGIO"],
-            var_name="TEAM",
-            value_name="GIORNI_LAVORATI_UFFICIALI",
-        )
-        df_tot_long["TEAM"] = df_tot_long["TEAM"].astype(str).str.strip().str.upper()
+        # Unificazione per Team
+        epal_df = df_tot_raw[["ANNO_C", "MESE_C", "TOTALE_MESE", "EPAL", "SAT_EPAL", "PROJ_EPAL"]].copy()
+        epal_df.columns = ["ANNO_C", "MESE_C", "TOTALE_MESE", "GIORNI_LAVORATI_UFFICIALI", "SATURAZIONE_UFFICIALE", "GIORNI_PROGETTI_UFFICIALI"]
+        epal_df["TEAM"] = "EPAL"
+
+        mgio_df = df_tot_raw[["ANNO_C", "MESE_C", "TOTALE_MESE", "MGIO", "SAT_MGIO", "PROJ_MGIO"]].copy()
+        mgio_df.columns = ["ANNO_C", "MESE_C", "TOTALE_MESE", "GIORNI_LAVORATI_UFFICIALI", "SATURAZIONE_UFFICIALE", "GIORNI_PROGETTI_UFFICIALI"]
+        mgio_df["TEAM"] = "MGIO"
+
+        df_tot_long = pd.concat([epal_df, mgio_df], ignore_index=True)
         df_tot_long = df_tot_long.dropna(subset=["GIORNI_LAVORATI_UFFICIALI"])
 
         parsed_tot = [parsing_mese_anno(m, a) for m, a in zip(df_tot_long["MESE_C"], df_tot_long["ANNO_C"])]
@@ -2221,17 +2237,18 @@ elif vista == "Effort & Carico di Lavoro":
 
     st.subheader("📅 Consuntivo Effort & Carico di lavoro")
 
-    # CALCOLO METRICHE PER I 3 RIQUADRI
+    # CALCOLO METRICHE PER I 3 RIQUADRI DALLA TABELLA UFFICIALE (J:AB)
     num_teams = len(team_cap_sel)
     if num_teams == 2:
         tot_interi = df_tot_filt.drop_duplicates(subset=["PERIODO"])["TOTALE_MESE"].sum()
         label_interi = "Giorni lavorati EPAL+MGIO"
+        tot_effettivi = df_tot_filt["GIORNI_PROGETTI_UFFICIALI"].sum()
     else:
         team_singolo = team_cap_sel[0]
         tot_interi = df_tot_filt["GIORNI_LAVORATI_UFFICIALI"].sum()
         label_interi = f"Giorni lavorati {team_singolo}"
+        tot_effettivi = df_tot_filt["GIORNI_PROGETTI_UFFICIALI"].sum()
 
-    tot_effettivi = df_db_filt["GIORNI"].sum()
     sat_pct = (tot_effettivi / tot_interi * 100) if tot_interi > 0 else 0.0
 
     # RENDERING I 3 RIQUADRI AFFIANCATI
