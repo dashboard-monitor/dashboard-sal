@@ -2231,8 +2231,8 @@ elif vista == "Effort & Carico di Lavoro":
 
     st.markdown("---")
 
-    # GRAFICI 1 & 2: Volumi e Trend dei Giorni lavorati
-    st.markdown("### 📊 Volumi e Trend dei Giorni lavorati")
+    # GRAFICI 1 & 2: Volumi e Trend dei Giorni interi lavorativi
+    st.markdown("### 📊 Volumi e Trend dei Giorni interi lavorativi")
 
     col_chart1, col_chart2 = st.columns(2)
 
@@ -2256,8 +2256,8 @@ elif vista == "Effort & Carico di Lavoro":
             height=400,
             hovermode="x unified",
             xaxis_title="Periodo Mensile",
-            yaxis_title="Giorni Lavorati",
-            title="Volumi mensili Giorni lavorati",
+            yaxis_title="Giorni Interi Lavorati",
+            title="Volumi Mensili Giorni Interi Lavorati",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             template="plotly_white",
         )
@@ -2282,12 +2282,12 @@ elif vista == "Effort & Carico di Lavoro":
                 )
             )
         fig_mon_line.update_xaxes(type="category")
-        fig_mon_line.update_yaxes(rangemode="tozero", title="Giorni Lavorati")
         fig_mon_line.update_layout(
             height=400,
             hovermode="x unified",
             xaxis_title="Periodo Mensile",
-            title="Andamento storico Giorni lavorati",
+            yaxis_title="Giorni Interi Lavorati",
+            title="Andamento Storico Giorni Interi Lavorati",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             template="plotly_white",
         )
@@ -2342,7 +2342,7 @@ elif vista == "Effort & Carico di Lavoro":
             height=400,
             hovermode="x unified",
             xaxis_title="Periodo Mensile",
-            title="Incidenza progetti sui Giorni lavorati (%)",
+            title="Incidenza Progetti sui Giorni Interi Lavorati (%)",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             template="plotly_white",
         )
@@ -2369,12 +2369,12 @@ elif vista == "Effort & Carico di Lavoro":
                 )
             )
         fig_sat_line.update_xaxes(type="category")
-        fig_sat_line.update_yaxes(rangemode="tozero", title="Saturazione (%)", ticksuffix="%")
+        fig_sat_line.update_yaxes(title="Saturazione (%)", ticksuffix="%")
         fig_sat_line.update_layout(
             height=400,
             hovermode="x unified",
             xaxis_title="Periodo Mensile",
-            title="Andamento storico Saturazione progetti",
+            title="Andamento Storico Saturazione Progetti",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             template="plotly_white",
         )
