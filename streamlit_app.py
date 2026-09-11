@@ -727,20 +727,25 @@ def estrai_dati_monitor_mensile(fogli):
 
     def parsing_mese_anno(val_m, val_a_raw):
         if pd.isna(val_m):
-            return "", 0, 2025
+            return "", 0, 2026, ""
 
         if isinstance(val_m, (datetime, pd.Timestamp)):
             m_num = val_m.month
             anno = val_m.year
+            giorno = val_m.day
             mesi_inv = {9: "settembre", 10: "ottobre", 11: "novembre", 12: "dicembre", 1: "gennaio", 2: "febbraio", 3: "marzo", 4: "aprile", 5: "maggio", 6: "giugno", 7: "luglio", 8: "agosto"}
-            return mesi_inv.get(m_num, ""), m_num, anno
+            m_nome = mesi_inv.get(m_num, "")
+            giorno_str = f"{giorno} {m_nome}" if giorno else m_nome
+            return m_nome, m_num, anno, giorno_str
 
         s = str(val_m).strip().lower()
+
         if re.match(r"^\d{4}-\d{2}-\d{2}", s):
             try:
                 dt = pd.to_datetime(s)
                 mesi_inv = {9: "settembre", 10: "ottobre", 11: "novembre", 12: "dicembre", 1: "gennaio", 2: "febbraio", 3: "marzo", 4: "aprile", 5: "maggio", 6: "giugno", 7: "luglio", 8: "agosto"}
-                return mesi_inv.get(dt.month, ""), dt.month, dt.year
+                m_nome = mesi_inv.get(dt.month, "")
+                return m_nome, dt.month, dt.year, f"{dt.day} {m_nome}"
             except Exception:
                 pass
 
@@ -751,7 +756,7 @@ def estrai_dati_monitor_mensile(fogli):
             try:
                 anno = int(float(str(val_a_raw)))
             except Exception:
-                anno = 2025
+                anno = 2026
 
         m_nome = ""
         m_num = 0
@@ -761,13 +766,19 @@ def estrai_dati_monitor_mensile(fogli):
                 m_num = num
                 break
 
-        return m_nome, m_num, anno
+        # Estrazione giorno e mese mantenendo la dicitura esatta (es. "1 settembre")
+        match_day = re.search(r"^\b(\d{1,2})\b", s)
+        if match_day and m_nome:
+            giorno_str = f"{match_day.group(1)} {m_nome}"
+        else:
+            giorno_str = s if s else m_nome
+
+        return m_nome, m_num, anno, giorno_str
 
     # 1. Dettaglio Analitico Attività (Colonne A:G)
     df_db = df_mon.iloc[:, :7].copy()
     df_db.columns = ["ANNO_RAW", "MESE", "PROGETTO", "TEAM", "ATTIVITÀ", "MINUTI", "GIORNI"]
 
-    # Converte i MINUTI in formato numerico e RICALCOLA le frazioni di giorno su base fissa a 480 minuti (8 ore)
     df_db["MINUTI"] = serie_numerica(df_db["MINUTI"])
     df_db["GIORNI"] = serie_numerica(df_db["GIORNI"])
 
@@ -781,11 +792,13 @@ def estrai_dati_monitor_mensile(fogli):
     df_db["MESE_NOME"] = [p[0] for p in parsed_db]
     df_db["MESE_NUM"] = [p[1] for p in parsed_db]
     df_db["ANNO"] = [p[2] for p in parsed_db]
+    df_db["GIORNO_MESE"] = [p[3] for p in parsed_db]
 
     df_db["SORT_KEY"] = df_db["ANNO"] * 100 + df_db["MESE_NUM"]
     df_db["PERIODO"] = df_db["MESE_NOME"].str.capitalize() + " " + df_db["ANNO"].astype(str)
+    df_db["DATA_COMPLETA"] = df_db["GIORNO_MESE"].str.capitalize() + " " + df_db["ANNO"].astype(str)
 
-    # 2. Riepilogo Ufficiale Giorni Interi Lavorati (Colonne J:N -> indici 9 a 14)
+    # 2. Riepilogo Ufficiale Giorni Interi Lavorati (Colonne J:N)
     if df_mon.shape[1] >= 14:
         df_tot_sub = df_mon.iloc[:, 9:14].copy()
         df_tot_sub.columns = ["ANNO_C", "MESE_C", "EPAL", "MGIO", "TOTALE_MESE"]
@@ -2447,9 +2460,27 @@ elif vista == "Effort & Carico di Lavoro":
         st.markdown("---")
         st.markdown("### 📋 Registro Dettagliato Attività per Mese")
 
+        # Menu a tendina 1: Selezione Cliente / Progetto
+        clienti_disponibili = ["Tutti i Clienti"] + sorted(df_db_filt["PROGETTO"].unique().tolist())
+        cliente_scelto = st.selectbox("🔍 Cerca Cliente / Progetto:", clienti_disponibili, key="filtro_cliente_reg")
+
+        if cliente_scelto != "Tutti i Clienti":
+            df_reg_step1 = df_db_filt[df_db_filt["PROGETTO"] == cliente_scelto]
+        else:
+            df_reg_step1 = df_db_filt
+
+        # Menu a tendina 2: Selezione Attività specifica
+        attivita_disponibili = ["Tutte le Attività"] + sorted(df_reg_step1["ATTIVITÀ"].unique().tolist())
+        attivita_scelta = st.selectbox("📌 Filtra per Attività svolta:", attivita_disponibili, key="filtro_attivita_reg")
+
+        if attivita_scelta != "Tutte le Attività":
+            df_reg_finale = df_reg_step1[df_reg_step1["ATTIVITÀ"] == attivita_scelta]
+        else:
+            df_reg_finale = df_reg_step1
+
         df_tab_dettaglio = (
-            df_db_filt[
-                ["PERIODO", "PROGETTO", "TEAM", "ATTIVITÀ", "MINUTI", "GIORNI", "SORT_KEY"]
+            df_reg_finale[
+                ["DATA_COMPLETA", "PROGETTO", "TEAM", "ATTIVITÀ", "MINUTI", "GIORNI", "SORT_KEY"]
             ]
             .sort_values(["SORT_KEY", "PROGETTO", "TEAM"])
             .drop(columns=["SORT_KEY"])
@@ -2460,8 +2491,8 @@ elif vista == "Effort & Carico di Lavoro":
             use_container_width=True,
             hide_index=True,
             column_config={
-                "PERIODO": st.column_config.TextColumn("Mese / Anno"),
-                "PROGETTO": st.column_config.TextColumn("Progetto / Commessa"),
+                "DATA_COMPLETA": st.column_config.TextColumn("Data (Giorno / Mese / Anno)"),
+                "PROGETTO": st.column_config.TextColumn("Progetto / Cliente"),
                 "TEAM": st.column_config.TextColumn("Team"),
                 "ATTIVITÀ": st.column_config.TextColumn("Attività Svolta"),
                 "MINUTI": st.column_config.NumberColumn("Minuti", format="%d min"),
