@@ -739,16 +739,8 @@ def estrai_dati_monitor_mensile(fogli):
             return m_nome, m_num, anno, giorno_str
 
         s = str(val_m).strip().lower()
-        if re.match(r"^\d{4}-\d{2}-\d{2}", s):
-            try:
-                dt = pd.to_datetime(s)
-                mesi_inv = {9: "settembre", 10: "ottobre", 11: "novembre", 12: "dicembre", 1: "gennaio", 2: "febbraio", 3: "marzo", 4: "aprile", 5: "maggio", 6: "giugno", 7: "luglio", 8: "agosto"}
-                m_nome = mesi_inv.get(dt.month, "")
-                return m_nome, dt.month, dt.year, f"{dt.day} {m_nome}"
-            except Exception:
-                pass
 
-        match_year = re.search(r"\b(20\d{2})\b", s)
+        match_year = re.search(r"\b(20\d{2})\b", str(val_m) + " " + str(val_a_raw))
         if match_year:
             anno = int(match_year.group(1))
         else:
@@ -802,7 +794,7 @@ def estrai_dati_monitor_mensile(fogli):
         df_tot_sub["MGIO"] = serie_numerica(df_tot_sub["MGIO"])
         df_tot_sub["TOTALE_MESE"] = serie_numerica(df_tot_sub["TOTALE_MESE"])
 
-        # Lettura saturazioni ufficiali da colonne AA (index 26) e AB (index 27)
+        # Lettura saturazioni ufficiali da colonne AA (26) e AB (27)
         if df_mon.shape[1] >= 28:
             df_tot_sub["SAT_EPAL"] = percentuale_da_excel(df_mon.iloc[:, 26])
             df_tot_sub["SAT_MGIO"] = percentuale_da_excel(df_mon.iloc[:, 27])
@@ -810,22 +802,19 @@ def estrai_dati_monitor_mensile(fogli):
             df_tot_sub["SAT_EPAL"] = 0.0
             df_tot_sub["SAT_MGIO"] = 0.0
 
-        # Calcolo giorni effettivi ufficiali (Giorni Lavorati * % Saturazione)
-        df_tot_sub["PROJ_EPAL"] = df_tot_sub["EPAL"] * (df_tot_sub["SAT_EPAL"] / 100.0)
-        df_tot_sub["PROJ_MGIO"] = df_tot_sub["MGIO"] * (df_tot_sub["SAT_MGIO"] / 100.0)
-
         df_tot_raw = df_tot_sub[
             (df_tot_sub["MESE_C"].notna())
             & (~df_tot_sub["MESE_C"].astype(str).str.upper().str.contains("TOTALE|ANNO|MESE|GIORNI"))
             & (df_tot_sub["MESE_C"].astype(str).str.strip() != "")
         ].copy()
 
-        epal_df = df_tot_raw[["ANNO_C", "MESE_C", "TOTALE_MESE", "EPAL", "SAT_EPAL", "PROJ_EPAL"]].copy()
-        epal_df.columns = ["ANNO_C", "MESE_C", "TOTALE_MESE", "GIORNI_LAVORATI_UFFICIALI", "SATURAZIONE_UFFICIALE", "GIORNI_PROGETTI_UFFICIALI"]
+        # Unificazione per Team
+        epal_df = df_tot_raw[["ANNO_C", "MESE_C", "TOTALE_MESE", "EPAL", "SAT_EPAL"]].copy()
+        epal_df.columns = ["ANNO_C", "MESE_C", "TOTALE_MESE", "GIORNI_LAVORATI_UFFICIALI", "SATURAZIONE_UFFICIALE"]
         epal_df["TEAM"] = "EPAL"
 
-        mgio_df = df_tot_raw[["ANNO_C", "MESE_C", "TOTALE_MESE", "MGIO", "SAT_MGIO", "PROJ_MGIO"]].copy()
-        mgio_df.columns = ["ANNO_C", "MESE_C", "TOTALE_MESE", "GIORNI_LAVORATI_UFFICIALI", "SATURAZIONE_UFFICIALE", "GIORNI_PROGETTI_UFFICIALI"]
+        mgio_df = df_tot_raw[["ANNO_C", "MESE_C", "TOTALE_MESE", "MGIO", "SAT_MGIO"]].copy()
+        mgio_df.columns = ["ANNO_C", "MESE_C", "TOTALE_MESE", "GIORNI_LAVORATI_UFFICIALI", "SATURAZIONE_UFFICIALE"]
         mgio_df["TEAM"] = "MGIO"
 
         df_tot_long = pd.concat([epal_df, mgio_df], ignore_index=True)
@@ -839,6 +828,21 @@ def estrai_dati_monitor_mensile(fogli):
         df_tot_long = df_tot_long[df_tot_long["MESE_NUM"] > 0]
         df_tot_long["SORT_KEY"] = df_tot_long["ANNO"] * 100 + df_tot_long["MESE_NUM"]
         df_tot_long["PERIODO"] = df_tot_long["MESE_NOME"].str.capitalize() + " " + df_tot_long["ANNO"].astype(str)
+
+        # Calcolo dinamico saturazione di riserva se il valore in tabella è 0.0% (es. Marzo 2026)
+        df_gg_log = df_db.groupby(["PERIODO", "TEAM"])["GIORNI"].sum().reset_index()
+        df_tot_long = pd.merge(df_tot_long, df_gg_log, on=["PERIODO", "TEAM"], how="left")
+        df_tot_long["GIORNI"] = df_tot_long["GIORNI"].fillna(0.0)
+
+        mask_zero = (df_tot_long["SATURAZIONE_UFFICIALE"] == 0.0) & (df_tot_long["GIORNI_LAVORATI_UFFICIALI"] > 0)
+        df_tot_long.loc[mask_zero, "SATURAZIONE_UFFICIALE"] = (
+            df_tot_long.loc[mask_zero, "GIORNI"] / df_tot_long.loc[mask_zero, "GIORNI_LAVORATI_UFFICIALI"]
+        ) * 100.0
+
+        # Giorni Progetto Ufficiali ricalcolati
+        df_tot_long["GIORNI_PROGETTI_UFFICIALI"] = (
+            df_tot_long["GIORNI_LAVORATI_UFFICIALI"] * (df_tot_long["SATURAZIONE_UFFICIALE"] / 100.0)
+        )
     else:
         df_tot_long = pd.DataFrame()
 
@@ -2175,9 +2179,7 @@ elif vista == "Effort & Carico di Lavoro":
     df_db_mon, df_tot_mon = estrai_dati_monitor_mensile(fogli)
 
     if df_db_mon is None or df_tot_mon is None or df_tot_mon.empty:
-        st.warning(
-            "⚠️ Foglio `MINDS_MONITOR_MENSILE` non individuato o privo della tabella dei totali (colonne J-N)."
-        )
+        st.warning("⚠️ Foglio `MINDS_MONITOR_MENSILE` non individuato o privo della tabella dei totali.")
         st.stop()
 
     st.sidebar.markdown("---")
@@ -2227,7 +2229,7 @@ elif vista == "Effort & Carico di Lavoro":
 
     st.subheader("📅 Consuntivo Effort & Carico di lavoro")
 
-    # METRICHE CARD (DA TABELLA UFFICIALE)
+    # CARDS DIRETTAMENTE DAI TOTALI UFFICIALI (Coincidono con 162.3 EPAL / 142.5 MGIO / 304.8 TOT)
     num_teams = len(team_cap_sel)
     if num_teams == 2:
         tot_interi = df_tot_filt.drop_duplicates(subset=["PERIODO"])["TOTALE_MESE"].sum()
@@ -2289,11 +2291,7 @@ elif vista == "Effort & Carico di Lavoro":
                     y=df_t["GIORNI_LAVORATI_UFFICIALI"],
                     name=f"Trend {team_name}",
                     mode="lines+markers",
-                    line=dict(
-                        width=3,
-                        color=COLORI_TEAM.get(team_name, "#2563EB"),
-                        shape="spline",
-                    ),
+                    line=dict(width=3, color=COLORI_TEAM.get(team_name, "#2563EB"), shape="spline"),
                     marker=dict(size=8),
                 )
             )
@@ -2311,7 +2309,6 @@ elif vista == "Effort & Carico di Lavoro":
 
     st.markdown("---")
 
-    # GRAFICI SATURAZIONE PROGETTI (%) USA SATURAZIONE UFFICIALE (COLONNE AA/AB)
     st.markdown("### 📈 Incidenza e Trend di Saturazione Progetti")
 
     col_sat1, col_sat2 = st.columns(2)
@@ -2353,11 +2350,7 @@ elif vista == "Effort & Carico di Lavoro":
                     y=df_s["SATURAZIONE_UFFICIALE"],
                     name=f"Trend {team_name}",
                     mode="lines+markers",
-                    line=dict(
-                        width=3,
-                        color=COLORI_TEAM.get(team_name, "#2563EB"),
-                        shape="spline",
-                    ),
+                    line=dict(width=3, color=COLORI_TEAM.get(team_name, "#2563EB"), shape="spline"),
                     marker=dict(size=8),
                     text=df_s["SATURAZIONE_UFFICIALE"].apply(lambda v: f"{v:.1f}%"),
                     hovertemplate="%{text}",
@@ -2425,21 +2418,13 @@ elif vista == "Effort & Carico di Lavoro":
                 template="plotly_white",
                 height=480,
             )
-            fig_mon_pie.update_traces(
-                textposition="inside",
-                textinfo="percent",
-                insidetextorientation="horizontal"
-            )
-            fig_mon_pie.update_layout(
-                title=dict(font=dict(size=16), y=0.96),
-                margin=dict(t=60, b=20, l=10, r=10)
-            )
+            fig_mon_pie.update_traces(textposition="inside", textinfo="percent", insidetextorientation="horizontal")
+            fig_mon_pie.update_layout(title=dict(font=dict(size=16), y=0.96), margin=dict(t=60, b=20, l=10, r=10))
             st.plotly_chart(fig_mon_pie, use_container_width=True, config=PLOTLY_CONFIG)
 
         st.markdown("---")
         st.markdown("### 📋 Registro Dettagliato Attività per Mese")
 
-        # FILTRI A TENDINA REGISTRO
         clienti_disponibili = ["Tutti i Clienti"] + sorted(df_db_filt["PROGETTO"].unique().tolist())
         cliente_scelto = st.selectbox("🔍 Cerca Cliente / Progetto:", clienti_disponibili, key="filtro_cliente_reg")
 
@@ -2457,9 +2442,7 @@ elif vista == "Effort & Carico di Lavoro":
             df_reg_finale = df_reg_step1
 
         df_tab_dettaglio = (
-            df_reg_finale[
-                ["DATA_COMPLETA", "PROGETTO", "TEAM", "ATTIVITÀ", "MINUTI", "GIORNI", "SORT_KEY"]
-            ]
+            df_reg_finale[["DATA_COMPLETA", "PROGETTO", "TEAM", "ATTIVITÀ", "MINUTI", "GIORNI", "SORT_KEY"]]
             .sort_values(["SORT_KEY", "PROGETTO", "TEAM"])
             .drop(columns=["SORT_KEY"])
         )
