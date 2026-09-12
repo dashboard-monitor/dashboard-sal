@@ -2494,12 +2494,12 @@ elif vista == "Effort & Carico di Lavoro":
             use_container_width=True,
             hide_index=True,
             column_config={
-                "DATA_COMPLETA": st.column_config.TextColumn("Data (Giorno / Mese / Anno)", width="medium"),
-                "PROGETTO": st.column_config.TextColumn("Progetto / Commessa", width="medium"),
+                "DATA_COMPLETA": st.column_config.TextColumn("Data", width="small"),
+                "PROGETTO": st.column_config.TextColumn("Progetto", width="medium"),
                 "TEAM": st.column_config.TextColumn("Team", width="small"),
-                "ATTIVITÀ": st.column_config.TextColumn("Attività Svolta", width="large"),
+                "ATTIVITÀ": st.column_config.TextColumn("Attività", width="medium"),
                 "MINUTI": st.column_config.NumberColumn("Minuti", format="%d min", width="small"),
-                "GIORNI": st.column_config.NumberColumn("Giorni (gg)", format="%.2f gg", width="small"),
+                "GIORNI": st.column_config.NumberColumn("Giorni", format="%.2f gg", width="small"),
             },
         )
 
