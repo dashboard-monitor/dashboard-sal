@@ -2434,7 +2434,7 @@ elif vista == "Effort & Carico di Lavoro":
         st.markdown("---")
         st.markdown("### 📋 Registro Dettagliato Attività per Mese")
 
-        # 1. Raccoglie TUTTI i progetti censiti nel sistema (attivi, storici e completati)
+        # 1. Raccoglie TUTTI i progetti censiti nel sistema
         set_progetti_tutti = set(df_db_mon["PROGETTO"].dropna().unique())
         if "portfolio_tutti" in locals() and not portfolio_tutti.empty:
             set_progetti_tutti.update(portfolio_tutti["Progetto"].dropna().unique())
@@ -2446,13 +2446,11 @@ elif vista == "Effort & Carico di Lavoro":
 
         # 2. Logica di filtraggio cliente
         if cliente_scelto != "Tutti i Clienti":
-            # Estrae lo storico del cliente selezionato per il team attivo
             df_base_cliente = df_db_mon[
                 (df_db_mon["TEAM"].isin(team_cap_sel)) & 
                 (df_db_mon["PROGETTO"] == cliente_scelto)
             ].copy()
             
-            # Se ci sono dati nell'intervallo temporale selezionato applica il filtro, altrimenti mostra l'intero storico
             df_in_periodo = df_base_cliente[df_base_cliente["PERIODO"].isin(periodi_sel)].copy()
             if not df_in_periodo.empty:
                 df_reg_step1 = df_in_periodo
@@ -2461,21 +2459,34 @@ elif vista == "Effort & Carico di Lavoro":
         else:
             df_reg_step1 = df_db_filt
 
-        # 3. Filtro dinamico delle Attività
+        # 3. Filtro dinamico delle Attività e Selector Ordinamento Cronologico
         attivita_disponibili = ["Tutte le Attività"] + sorted(
             [a for a in df_reg_step1["ATTIVITÀ"].dropna().unique() if str(a).strip()]
         )
-        attivita_scelta = st.selectbox("📌 Filtra per Attività svolta:", attivita_disponibili, key="filtro_attivita_reg")
+        
+        col_att_reg, col_ord_reg = st.columns([2, 1])
+        with col_att_reg:
+            attivita_scelta = st.selectbox("📌 Filtra per Attività svolta:", attivita_disponibili, key="filtro_attivita_reg")
+        with col_ord_reg:
+            ordine_data_reg = st.selectbox(
+                "📅 Ordine Cronologico:",
+                ["Meno recente → Più recente (Crescente)", "Più recente → Meno recente (Decrescente)"],
+                index=0,
+                key="ordine_data_reg"
+            )
 
         if attivita_scelta != "Tutte le Attività":
             df_reg_finale = df_reg_step1[df_reg_step1["ATTIVITÀ"] == attivita_scelta]
         else:
             df_reg_finale = df_reg_step1
 
+        ascending_reg = (ordine_data_reg == "Meno recente → Più recente (Crescente)")
+
+        # Ordinamento cronologico puro per data mantenendo la sequenza originale per la stessa giornata
         df_tab_dettaglio = (
-            df_reg_finale[["DATA_COMPLETA", "PROGETTO", "TEAM", "ATTIVITÀ", "MINUTI", "GIORNI", "SORT_KEY"]]
-            .sort_values(["SORT_KEY", "PROGETTO", "TEAM"])
-            .drop(columns=["SORT_KEY"])
+            df_reg_finale[["DATA_COMPLETA", "PROGETTO", "TEAM", "ATTIVITÀ", "MINUTI", "GIORNI", "DATA_DT"]]
+            .sort_values(by="DATA_DT", ascending=ascending_reg, kind="mergesort")
+            .drop(columns=["DATA_DT"])
         )
 
         st.dataframe(
