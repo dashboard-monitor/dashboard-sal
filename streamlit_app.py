@@ -2494,12 +2494,12 @@ elif vista == "Effort & Carico di Lavoro":
             use_container_width=True,
             hide_index=True,
             column_config={
-                "DATA_COMPLETA": st.column_config.TextColumn("Data", width=125),
-                "PROGETTO": st.column_config.TextColumn("Progetto", width=170),
-                "TEAM": st.column_config.TextColumn("Team", width=60),
-                "ATTIVITÀ": st.column_config.TextColumn("Attività", width=450),
-                "MINUTI": st.column_config.NumberColumn("Minuti", format="%d min", width=80),
-                "GIORNI": st.column_config.NumberColumn("Giorni", format="%.2f gg", width=80),
+                "DATA_COMPLETA": st.column_config.TextColumn("Data", width=110),
+                "PROGETTO": st.column_config.TextColumn("Progetto", width=140),
+                "TEAM": st.column_config.TextColumn("Team", width=55),
+                "ATTIVITÀ": st.column_config.TextColumn("Attività"),
+                "MINUTI": st.column_config.NumberColumn("Minuti", format="%d min", width=75),
+                "GIORNI": st.column_config.NumberColumn("Giorni", format="%.2f gg", width=75),
             },
         )
 
