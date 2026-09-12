@@ -760,10 +760,11 @@ def estrai_dati_monitor_mensile(fogli):
                 m_num = num
                 break
 
-        match_day = re.search(r"^\b(\d{1,2})\b", s)
+       match_day = re.search(r"^\b(\d{1,2})\b", s)
+        giorno_num = int(match_day.group(1)) if match_day else 1
         giorno_str = f"{match_day.group(1)} {m_nome}" if (match_day and m_nome) else (s if s else m_nome)
 
-        return m_nome, m_num, anno, giorno_str
+        return m_nome, m_num, anno, giorno_str, giorno_num
 
     # 1. Dettaglio Analitico Attività (Colonne A:G)
     df_db = df_mon.iloc[:, :7].copy()
@@ -783,8 +784,10 @@ def estrai_dati_monitor_mensile(fogli):
     df_db["MESE_NUM"] = [p[1] for p in parsed_db]
     df_db["ANNO"] = [p[2] for p in parsed_db]
     df_db["GIORNO_MESE"] = [p[3] for p in parsed_db]
+    df_db["GIORNO_NUM"] = [p[4] for p in parsed_db]
 
     df_db["SORT_KEY"] = df_db["ANNO"] * 100 + df_db["MESE_NUM"]
+    df_db["SORT_KEY_GIORNO"] = df_db["ANNO"] * 10000 + df_db["MESE_NUM"] * 100 + df_db["GIORNO_NUM"]
     df_db["PERIODO"] = df_db["MESE_NOME"].str.capitalize() + " " + df_db["ANNO"].astype(str)
     df_db["DATA_COMPLETA"] = df_db["GIORNO_MESE"].str.capitalize() + " " + df_db["ANNO"].astype(str)
 
