@@ -739,7 +739,7 @@ def estrai_dati_monitor_mensile(fogli):
                 pass
 
         if pd.isna(val_m):
-            return "", 0, anno, ""
+            return "", 0, anno, "", 1
 
         # 2. Se la Colonna B è un oggetto Data, estrae mese e giorno ma Mantiene l'Anno della Colonna A
         if isinstance(val_m, (datetime, pd.Timestamp)):
@@ -748,7 +748,7 @@ def estrai_dati_monitor_mensile(fogli):
             mesi_inv = {9: "settembre", 10: "ottobre", 11: "novembre", 12: "dicembre", 1: "gennaio", 2: "febbraio", 3: "marzo", 4: "aprile", 5: "maggio", 6: "giugno", 7: "luglio", 8: "agosto"}
             m_nome = mesi_inv.get(m_num, "")
             giorno_str = f"{giorno} {m_nome}" if giorno else m_nome
-            return m_nome, m_num, anno, giorno_str
+            return m_nome, m_num, anno, giorno_str, (giorno if giorno else 1)
 
         s = str(val_m).strip().lower()
 
@@ -760,7 +760,7 @@ def estrai_dati_monitor_mensile(fogli):
                 m_num = num
                 break
 
-       match_day = re.search(r"^\b(\d{1,2})\b", s)
+        match_day = re.search(r"^\b(\d{1,2})\b", s)
         giorno_num = int(match_day.group(1)) if match_day else 1
         giorno_str = f"{match_day.group(1)} {m_nome}" if (match_day and m_nome) else (s if s else m_nome)
 
@@ -835,7 +835,7 @@ def estrai_dati_monitor_mensile(fogli):
         df_tot_long["SORT_KEY"] = df_tot_long["ANNO"] * 100 + df_tot_long["MESE_NUM"]
         df_tot_long["PERIODO"] = df_tot_long["MESE_NOME"].str.capitalize() + " " + df_tot_long["ANNO"].astype(str)
 
-        # Calcolo dinamico saturazione di riserva se il valore in tabella è 0.0% (es. Marzo 2026)
+        # Calcolo dinamico saturazione di riserva se il valore in tabella è 0.0%
         df_gg_log = df_db.groupby(["PERIODO", "TEAM"])["GIORNI"].sum().reset_index()
         df_tot_long = pd.merge(df_tot_long, df_gg_log, on=["PERIODO", "TEAM"], how="left")
         df_tot_long["GIORNI"] = df_tot_long["GIORNI"].fillna(0.0)
