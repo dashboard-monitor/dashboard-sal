@@ -726,7 +726,6 @@ def estrai_dati_monitor_mensile(fogli):
         return None, None
 
     def parsing_mese_anno(val_m, val_a_raw):
-        # 1. L'anno della Colonna A ha SEMPRE la precedenza assoluta
         anno = 2025
         if pd.notna(val_a_raw):
             try:
@@ -739,16 +738,16 @@ def estrai_dati_monitor_mensile(fogli):
                 pass
 
         if pd.isna(val_m):
-            return "", 0, anno, "", 1
+            return "", 0, anno, "", 1, pd.Timestamp(year=anno, month=1, day=1)
 
-        # 2. Se la Colonna B è un oggetto Data, estrae mese e giorno ma Mantiene l'Anno della Colonna A
         if isinstance(val_m, (datetime, pd.Timestamp)):
             m_num = val_m.month
             giorno = val_m.day
             mesi_inv = {9: "settembre", 10: "ottobre", 11: "novembre", 12: "dicembre", 1: "gennaio", 2: "febbraio", 3: "marzo", 4: "aprile", 5: "maggio", 6: "giugno", 7: "luglio", 8: "agosto"}
             m_nome = mesi_inv.get(m_num, "")
             giorno_str = f"{giorno} {m_nome}" if giorno else m_nome
-            return m_nome, m_num, anno, giorno_str, (giorno if giorno else 1)
+            dt = pd.Timestamp(year=anno, month=m_num if m_num > 0 else 1, day=giorno if giorno else 1)
+            return m_nome, m_num, anno, giorno_str, (giorno if giorno else 1), dt
 
         s = str(val_m).strip().lower()
 
@@ -764,7 +763,15 @@ def estrai_dati_monitor_mensile(fogli):
         giorno_num = int(match_day.group(1)) if match_day else 1
         giorno_str = f"{match_day.group(1)} {m_nome}" if (match_day and m_nome) else (s if s else m_nome)
 
-        return m_nome, m_num, anno, giorno_str, giorno_num
+        m_num_safe = m_num if 1 <= m_num <= 12 else 1
+        giorno_safe = giorno_num if 1 <= giorno_num <= 31 else 1
+
+        try:
+            dt = pd.Timestamp(year=anno, month=m_num_safe, day=giorno_safe)
+        except Exception:
+            dt = pd.Timestamp(year=anno, month=1, day=1)
+
+        return m_nome, m_num, anno, giorno_str, giorno_num, dt
 
     # 1. Dettaglio Analitico Attività (Colonne A:G)
     df_db = df_mon.iloc[:, :7].copy()
@@ -785,9 +792,9 @@ def estrai_dati_monitor_mensile(fogli):
     df_db["ANNO"] = [p[2] for p in parsed_db]
     df_db["GIORNO_MESE"] = [p[3] for p in parsed_db]
     df_db["GIORNO_NUM"] = [p[4] for p in parsed_db]
+    df_db["DATA_DT"] = [p[5] for p in parsed_db]
 
     df_db["SORT_KEY"] = df_db["ANNO"] * 100 + df_db["MESE_NUM"]
-    df_db["SORT_KEY_GIORNO"] = df_db["ANNO"] * 10000 + df_db["MESE_NUM"] * 100 + df_db["GIORNO_NUM"]
     df_db["PERIODO"] = df_db["MESE_NOME"].str.capitalize() + " " + df_db["ANNO"].astype(str)
     df_db["DATA_COMPLETA"] = df_db["GIORNO_MESE"].str.capitalize() + " " + df_db["ANNO"].astype(str)
 
@@ -800,7 +807,6 @@ def estrai_dati_monitor_mensile(fogli):
         df_tot_sub["MGIO"] = serie_numerica(df_tot_sub["MGIO"])
         df_tot_sub["TOTALE_MESE"] = serie_numerica(df_tot_sub["TOTALE_MESE"])
 
-        # Lettura saturazioni ufficiali da colonne AA (26) e AB (27)
         if df_mon.shape[1] >= 28:
             df_tot_sub["SAT_EPAL"] = percentuale_da_excel(df_mon.iloc[:, 26])
             df_tot_sub["SAT_MGIO"] = percentuale_da_excel(df_mon.iloc[:, 27])
@@ -814,7 +820,6 @@ def estrai_dati_monitor_mensile(fogli):
             & (df_tot_sub["MESE_C"].astype(str).str.strip() != "")
         ].copy()
 
-        # Unificazione per Team
         epal_df = df_tot_raw[["ANNO_C", "MESE_C", "TOTALE_MESE", "EPAL", "SAT_EPAL"]].copy()
         epal_df.columns = ["ANNO_C", "MESE_C", "TOTALE_MESE", "GIORNI_LAVORATI_UFFICIALI", "SATURAZIONE_UFFICIALE"]
         epal_df["TEAM"] = "EPAL"
@@ -835,7 +840,6 @@ def estrai_dati_monitor_mensile(fogli):
         df_tot_long["SORT_KEY"] = df_tot_long["ANNO"] * 100 + df_tot_long["MESE_NUM"]
         df_tot_long["PERIODO"] = df_tot_long["MESE_NOME"].str.capitalize() + " " + df_tot_long["ANNO"].astype(str)
 
-        # Calcolo dinamico saturazione di riserva se il valore in tabella è 0.0%
         df_gg_log = df_db.groupby(["PERIODO", "TEAM"])["GIORNI"].sum().reset_index()
         df_tot_long = pd.merge(df_tot_long, df_gg_log, on=["PERIODO", "TEAM"], how="left")
         df_tot_long["GIORNI"] = df_tot_long["GIORNI"].fillna(0.0)
@@ -845,7 +849,6 @@ def estrai_dati_monitor_mensile(fogli):
             df_tot_long.loc[mask_zero, "GIORNI"] / df_tot_long.loc[mask_zero, "GIORNI_LAVORATI_UFFICIALI"]
         ) * 100.0
 
-        # Giorni Progetto Ufficiali ricalcolati
         df_tot_long["GIORNI_PROGETTI_UFFICIALI"] = (
             df_tot_long["GIORNI_LAVORATI_UFFICIALI"] * (df_tot_long["SATURAZIONE_UFFICIALE"] / 100.0)
         )
@@ -853,7 +856,7 @@ def estrai_dati_monitor_mensile(fogli):
         df_tot_long = pd.DataFrame()
 
     return df_db, df_tot_long
-
+    
 def arricchisci_portafoglio_minds(df_portfolio, metriche_minds):
     if df_portfolio.empty or not metriche_minds:
         return df_portfolio
