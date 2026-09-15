@@ -222,7 +222,7 @@ def pulisci_dataframe(df):
     df = df.dropna(how="all")
     return df
 
- # --- NUOVA FUNZIONE PER ESTRAZIONE DETERMINE (FIX RIGA INTESTAZIONE) ---
+ # --- NUOVA FUNZIONE PER ESTRAZIONE DETERMINE (CORRETTA DEFINITIVA) ---
 def estrai_dati_determine(fogli):
     if "det_provv" not in fogli:
         return pd.DataFrame()
@@ -231,24 +231,30 @@ def estrai_dati_determine(fogli):
     if df_raw.empty:
         return pd.DataFrame()
 
-    # 1. Trova in quale riga si trovano le vere intestazioni (es. dove c'è "UTENTE" o "DETERMINA")
-    header_row_idx = None
-    for idx, row in df_raw.iterrows():
-        row_str = " ".join([str(v).upper() for v in row.values if pd.notna(v)])
-        if "UTENTE" in row_str or "DETERMINA" in row_str:
-            header_row_idx = idx
-            break
-
-    # Se le intestazioni non sono sulla riga 1, ricostruisce il dataframe partendo dalla riga giusta
-    if header_row_idx is not None and header_row_idx > 0:
-        new_headers = [str(c).strip().replace('\n', ' ').replace('\r', '').upper() for c in df_raw.iloc[header_row_idx].values]
-        df = df_raw.iloc[header_row_idx + 1:].copy()
-        df.columns = new_headers
-    else:
+    # 1. Verifica se le intestazioni corrette sono già nelle colonne o in una riga dei dati
+    cols_upper = [str(c).strip().replace('\n', ' ').replace('\r', '').upper() for c in df_raw.columns]
+    
+    if any("UTENTE" in c or "DETERMINA" in c for c in cols_upper):
         df = df_raw.copy()
-        df.columns = [str(c).strip().replace('\n', ' ').replace('\r', '').upper() for c in df.columns]
+        df.columns = cols_upper
+    else:
+        # Cerca la riga dove risiedono le vere intestazioni
+        header_idx = None
+        for idx, row in df_raw.iterrows():
+            row_str = " ".join([str(v).upper() for v in row.values if pd.notna(v)])
+            if "UTENTE" in row_str or "DETERMINA" in row_str:
+                header_idx = idx
+                break
+                
+        if header_idx is not None:
+            new_headers = [str(v).strip().replace('\n', ' ').replace('\r', '').upper() for v in df_raw.iloc[header_idx].values]
+            df = df_raw.iloc[header_idx + 1:].copy()
+            df.columns = new_headers
+        else:
+            df = df_raw.copy()
+            df.columns = cols_upper
 
-    # 2. Cerca le colonne chiave
+    # 2. Riconoscimento colonne chiave
     col_utente = next((c for c in df.columns if "UTENTE" in c or "CLIENTE" in c), None)
     col_data = next((c for c in df.columns if "DATA DETERMINA" in c or "DETERMINA" in c), None)
     col_scad = next((c for c in df.columns if "SCAD" in c and "INVEST" in c), None)
@@ -257,18 +263,17 @@ def estrai_dati_determine(fogli):
     if not col_utente or not col_data:
         return pd.DataFrame()
 
-    # 3. Rinomina in nomi standard
+    # 3. Normalizzazione colonne
     df = df.rename(columns={col_utente: "UTENTE", col_data: "DATA DETERMINA"})
     if col_scad: df = df.rename(columns={col_scad: "SCAD. COMPL. INVEST."})
     else: df["SCAD. COMPL. INVEST."] = pd.NaT
     if col_trasm: df = df.rename(columns={col_trasm: "TRASM. RENDI"})
     else: df["TRASM. RENDI"] = ""
 
-    # 4. Parsing delle date in formato Europeo (Giorno/Mese/Anno)
+    # 4. Conversioni temporali europee
     df["DATA DETERMINA"] = pd.to_datetime(df["DATA DETERMINA"], dayfirst=True, errors="coerce")
     df["SCAD. COMPL. INVEST."] = pd.to_datetime(df["SCAD. COMPL. INVEST."], dayfirst=True, errors="coerce")
 
-    # Scarta eventuali righe senza data determina
     df = df.dropna(subset=["DATA DETERMINA"])
 
     oggi = pd.Timestamp(ora_italiana().date())
