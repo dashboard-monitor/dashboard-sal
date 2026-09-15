@@ -222,17 +222,33 @@ def pulisci_dataframe(df):
     df = df.dropna(how="all")
     return df
 
- # --- NUOVA FUNZIONE PER ESTRAZIONE DETERMINE (ROBUSTA) ---
+ # --- NUOVA FUNZIONE PER ESTRAZIONE DETERMINE (FIX RIGA INTESTAZIONE) ---
 def estrai_dati_determine(fogli):
     if "det_provv" not in fogli:
         return pd.DataFrame()
         
-    df = fogli["det_provv"].copy()
-    
-    # 1. Pulisce i nomi delle colonne da spazi invisibili e 'a capo' accidentali in Excel
-    df.columns = [str(c).strip().replace('\n', ' ').replace('\r', '').upper() for c in df.columns]
-    
-    # 2. Cerca le colonne anche se i nomi non sono esatti al 100%
+    df_raw = fogli["det_provv"].copy()
+    if df_raw.empty:
+        return pd.DataFrame()
+
+    # 1. Trova in quale riga si trovano le vere intestazioni (es. dove c'è "UTENTE" o "DETERMINA")
+    header_row_idx = None
+    for idx, row in df_raw.iterrows():
+        row_str = " ".join([str(v).upper() for v in row.values if pd.notna(v)])
+        if "UTENTE" in row_str or "DETERMINA" in row_str:
+            header_row_idx = idx
+            break
+
+    # Se le intestazioni non sono sulla riga 1, ricostruisce il dataframe partendo dalla riga giusta
+    if header_row_idx is not None and header_row_idx > 0:
+        new_headers = [str(c).strip().replace('\n', ' ').replace('\r', '').upper() for c in df_raw.iloc[header_row_idx].values]
+        df = df_raw.iloc[header_row_idx + 1:].copy()
+        df.columns = new_headers
+    else:
+        df = df_raw.copy()
+        df.columns = [str(c).strip().replace('\n', ' ').replace('\r', '').upper() for c in df.columns]
+
+    # 2. Cerca le colonne chiave
     col_utente = next((c for c in df.columns if "UTENTE" in c or "CLIENTE" in c), None)
     col_data = next((c for c in df.columns if "DATA DETERMINA" in c or "DETERMINA" in c), None)
     col_scad = next((c for c in df.columns if "SCAD" in c and "INVEST" in c), None)
@@ -241,18 +257,18 @@ def estrai_dati_determine(fogli):
     if not col_utente or not col_data:
         return pd.DataFrame()
 
-    # 3. Rinomina le colonne trovate per renderle standard
+    # 3. Rinomina in nomi standard
     df = df.rename(columns={col_utente: "UTENTE", col_data: "DATA DETERMINA"})
     if col_scad: df = df.rename(columns={col_scad: "SCAD. COMPL. INVEST."})
     else: df["SCAD. COMPL. INVEST."] = pd.NaT
     if col_trasm: df = df.rename(columns={col_trasm: "TRASM. RENDI"})
     else: df["TRASM. RENDI"] = ""
 
-    # 4. Forza il formato data Europeo
+    # 4. Parsing delle date in formato Europeo (Giorno/Mese/Anno)
     df["DATA DETERMINA"] = pd.to_datetime(df["DATA DETERMINA"], dayfirst=True, errors="coerce")
     df["SCAD. COMPL. INVEST."] = pd.to_datetime(df["SCAD. COMPL. INVEST."], dayfirst=True, errors="coerce")
 
-    # Scarta righe completamente vuote per errore
+    # Scarta eventuali righe senza data determina
     df = df.dropna(subset=["DATA DETERMINA"])
 
     oggi = pd.Timestamp(ora_italiana().date())
