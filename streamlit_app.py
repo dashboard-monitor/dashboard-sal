@@ -1634,6 +1634,118 @@ def grafico_attivita(df_attivita, progetto):
     )
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
+def grafico_gantt_progetto(df_sal, nome_foglio, progetto):
+    # Estrae le colonne dal foglio SAL
+    col_att = trova_colonna_attivita(df_sal)
+    col_fatto_gg, col_da_fare_gg, _ = trova_colonne_giorni_sal(df_sal, nome_foglio)
+    col_inizio_gg = trova_colonna(df_sal, contains_all=["inizio", "accumulato", "giorni"])
+    
+    col_fatto_min = trova_colonna(df_sal, exact=["FATTO (min)"]) or trova_colonna(df_sal, contains_all=["fatto", "min"])
+    col_da_fare_min = trova_colonna(df_sal, exact=["DA FARE (min)"]) or trova_colonna(df_sal, contains_all=["fare", "min"])
+    col_inizio_min = trova_colonna(df_sal, contains_all=["inizio", "accumulato", "min"])
+
+    if col_att is None or col_fatto_gg is None or col_da_fare_gg is None:
+        st.info("Dati insufficienti per generare il Gantt temporale.")
+        return
+
+    mask = mask_righe_attivita_valide(df_sal, col_att)
+    df_gantt = df_sal.loc[mask].copy()
+
+    if df_gantt.empty:
+        st.info("Nessuna attività valida per il Gantt.")
+        return
+
+    # Selettore unità di misura
+    unita = st.radio(
+        "Unità di misura Gantt:",
+        ["Giorni", "Minuti"],
+        index=0,
+        horizontal=True,
+        key=f"unita_gantt_{progetto}"
+    )
+
+    df_gantt["Attività"] = df_gantt[col_att].astype(str).str.strip()
+
+    if unita == "Minuti" and col_fatto_min and col_da_fare_min:
+        df_gantt["Fatto"] = serie_numerica(df_gantt[col_fatto_min]).fillna(0)
+        df_gantt["Da fare"] = serie_numerica(df_gantt[col_da_fare_min]).fillna(0)
+        col_inizio_sel = col_inizio_min
+        label_u = "min"
+        dtick_val = 120
+    else:
+        df_gantt["Fatto"] = serie_numerica(df_gantt[col_fatto_gg]).fillna(0)
+        df_gantt["Da fare"] = serie_numerica(df_gantt[col_da_fare_gg]).fillna(0)
+        col_inizio_sel = col_inizio_gg
+        label_u = "gg"
+        dtick_val = 2
+
+    if col_inizio_sel and col_inizio_sel in df_gantt.columns:
+        df_gantt["Inizio"] = serie_numerica(df_gantt[col_inizio_sel]).fillna(0)
+    else:
+        df_gantt["Durata"] = df_gantt["Fatto"] + df_gantt["Da fare"]
+        df_gantt["Inizio"] = df_gantt["Durata"].cumsum() - df_gantt["Durata"]
+
+    fig = go.Figure()
+
+    # 1. Traccia Trasparente per scostamento temporale
+    fig.add_trace(
+        go.Bar(
+            y=df_gantt["Attività"],
+            x=df_gantt["Inizio"],
+            orientation="h",
+            marker=dict(color="rgba(0,0,0,0)"),
+            showlegend=False,
+            hoverinfo="skip",
+        )
+    )
+
+    # 2. Traccia Verde (Fatto)
+    fig.add_trace(
+        go.Bar(
+            y=df_gantt["Attività"],
+            x=df_gantt["Fatto"],
+            name=f"Fatto ({unita})",
+            orientation="h",
+            marker=dict(color="#2CA02C"),
+            hovertemplate=f"<b>%{{y}}</b><br>Fatto: %{{x:.2f}} {label_u}<extra></extra>",
+        )
+    )
+
+    # 3. Traccia Rossa (Da Fare)
+    fig.add_trace(
+        go.Bar(
+            y=df_gantt["Attività"],
+            x=df_gantt["Da fare"],
+            name=f"Da Fare ({unita})",
+            orientation="h",
+            marker=dict(color="#D62728"),
+            hovertemplate=f"<b>%{{y}}</b><br>Da Fare: %{{x:.2f}} {label_u}<extra></extra>",
+        )
+    )
+
+    fig.update_layout(
+        barmode="stack",
+        title=f"Gantt e Avanzamento Attività — {progetto}",
+        xaxis=dict(
+            title=unita,
+            showgrid=True,
+            gridcolor="#E5E7EB",
+            dtick=dtick_val,
+        ),
+        yaxis=dict(
+            title="",
+            autorange="reversed",
+            automargin=True,
+            showgrid=True,
+            gridcolor="#F3F4F6",
+        ),
+        height=max(450, len(df_gantt) * 26),
+        margin=dict(l=20, r=30, t=60, b=40),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        plot_bgcolor="white",
+    )
+
+    st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
 def grafico_ripartizione_lavoro(pct_fatti, pct_da_fare):
     if pd.isna(pct_fatti) or pd.isna(pct_da_fare):
@@ -2601,7 +2713,19 @@ elif vista == "Dettaglio progetto":
     att = costruisci_attivita(df_sal, foglio_sal)
     if not att.empty:
         st.markdown("---")
-        grafico_attivita(att, prog)
+        
+        # Creazione dei Tab per alternare le viste visive
+        tab_gantt, tab_avanzamento = st.tabs(
+            ["📊 Diagramma di Gantt (Giorni)", "📈 Avanzamento Attività (%)"]
+        )
+
+        with tab_gantt:
+            grafico_gantt_progetto(df_sal, foglio_sal, prog)
+
+        with tab_avanzamento:
+            grafico_attivita(att, prog)
+
+        st.markdown("---")
         st.subheader("Dettaglio attività")
         st.dataframe(
             att[["Attività", "SAL", "Stato", "Fatto", "Da fare"]], 
