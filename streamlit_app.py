@@ -2447,7 +2447,7 @@ if vista == "Executive":
                 st.error(f"{testo_alert} | ⏳ Da trasmettere per la rendicontazione")
 
     # --- TABELLA 1: DETERMINE PROVVISORIE ---
-    st.subheader("📌 Priorità operative: Determine Provvisorie")
+    st.subheader("📌 Priorità operative: Progetti con Determina Provvisoria")
     if not tab1_det.empty:
         tab1_vis = tab1_det.copy()
         tab1_vis["Data Determina"] = tab1_vis["DATA DETERMINA"].dt.strftime("%d/%m/%Y")
