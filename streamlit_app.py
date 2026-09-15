@@ -2407,14 +2407,21 @@ if vista == "Executive":
     else:
         priorita_completa = pd.DataFrame()
 
-    # --- SEPARAZIONE TABELLE ED ESCLUSIONE PROGETTI CON "OK" NEGLI ALERT ---
+    # --- SEPARAZIONE TABELLE, ORDINAMENTO E ESCLUSIONE PROGETTI CON "OK" ---
     if not priorita_completa.empty and "Ha_Determina" in priorita_completa.columns:
         # Mostra negli Alert solo i progetti con determina e SENZA "OK" in TRASM. RENDI (colonna F)
         mask_alert = (
             priorita_completa["Ha_Determina"] & 
             (priorita_completa["TRASM. RENDI"].astype(str).str.strip().str.upper() != "OK")
         )
-        allarmi_attivi = priorita_completa[mask_alert].copy()
+        
+        # Ordinamento decrescente sui Giorni Trascorsi (più vecchi in alto)
+        allarmi_attivi = (
+            priorita_completa[mask_alert]
+            .sort_values("Giorni Trascorsi", ascending=False)
+            .copy()
+        )
+        
         tab1_det = priorita_completa[priorita_completa["Ha_Determina"]].sort_values(["SAL", "Progetto"], ascending=[True, True]).copy()
         tab2_nodet = priorita_completa[~priorita_completa["Ha_Determina"]].sort_values(["SAL", "Progetto"], ascending=[True, True]).head(10).copy()
     else:
