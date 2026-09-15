@@ -1253,21 +1253,27 @@ def consolida_progetti_univoci(df):
         completo_sorgente = any(stato_sorgente_e_completo(v) for v in stati)
 
         sal_vals = pd.to_numeric(gruppo["SAL sorgente"], errors="coerce").dropna()
+        
+        # 1. Calcola sempre prima il SAL matematico reale
+        if not sal_vals.empty:
+            sal_sorgente = sal_vals.iloc[0] if len(sal_vals) == 1 else sal_vals.mean()
+        elif pd.notna(totale_gg) and totale_gg > 0:
+            sal_sorgente = (fatto / totale_gg) * 100
+        else:
+            sal_vis = pd.to_numeric(gruppo["SAL"], errors="coerce").dropna()
+            sal_sorgente = sal_vis.mean() if not sal_vis.empty else float("nan")
+
+        # 2. Cappa il SAL al 100% massimo (se eccede il 100%, es. 113%, diventa 100.0%)
+        if pd.notna(sal_sorgente):
+            sal = min(max(float(sal_sorgente), 0.0), 100.0)
+        else:
+            sal = float("nan")
+
+        # 3. Assegna lo stato: se c'è la spunta/stato COMPLETO forzalo a "Completato"
         if completo_sorgente:
-            sal_sorgente = 100.0
-            sal = 100.0
             stato = "Completato"
             stato_sorgente = "COMPLETO"
         else:
-            if not sal_vals.empty:
-                sal_sorgente = sal_vals.iloc[0] if len(sal_vals) == 1 else sal_vals.mean()
-            elif pd.notna(totale_gg) and totale_gg > 0:
-                sal_sorgente = (fatto / totale_gg) * 100
-            else:
-                sal_vis = pd.to_numeric(gruppo["SAL"], errors="coerce").dropna()
-                sal_sorgente = sal_vis.mean() if not sal_vis.empty else float("nan")
-
-            sal = min(max(float(sal_sorgente), 0), 100) if pd.notna(sal_sorgente) else float("nan")
             stato = stato_da_sal(sal)
 
         sal_atteso = float("nan")
