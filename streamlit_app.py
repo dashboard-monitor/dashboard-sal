@@ -2409,7 +2409,7 @@ if vista == "Executive":
 
     # --- SEPARAZIONE TABELLE E TRACCIAMENTO COMPLETO DETERMINE ---
     if not priorita_completa.empty and "Ha_Determina" in priorita_completa.columns:
-        # Prende tutti i progetti con determina
+        # Prende tutti i progetti con determina (sia da trasmettere che già trasmessi con OK)
         tab1_det = priorita_completa[priorita_completa["Ha_Determina"]].copy()
         tab1_det["Is_OK"] = tab1_det["TRASM. RENDI"].astype(str).str.strip().str.upper() == "OK"
         
@@ -2479,7 +2479,6 @@ if vista == "Executive":
             )
             st.markdown(html_table, unsafe_allow_html=True)
 
-        # Spaziatore inferiore equilibrato prima del titolo successivo
         st.markdown("<div style='margin-bottom: 1.35rem;'></div>", unsafe_allow_html=True)
 
     # --- TABELLA 1: DETERMINE PROVVISORIE ---
