@@ -2356,38 +2356,34 @@ if vista == "Executive":
     # --- GESTIONE ALERT E MATCHING DETERMINE ---
     df_det = estrai_dati_determine(fogli)
     
-    # Prepara la lista dei nomi dei progetti attualmente nella dashboard
-    chiavi_correnti_orig = portfolio_filtrato["Progetto"].unique()
-    
     if not df_det.empty:
-        # MOTORE DI RICERCA: Incrocia i nomi di Excel (lunghi) con quelli della Dashboard (corti)
-        def match_project(excel_name):
-            k_ex = chiave_progetto(excel_name)
-            if not k_ex: return None
+        # Crea un dizionario di mappe basato sulla chiave pulita
+        # Chiave pulita dashboard -> Nome Progetto Dashboard
+        mappa_chiavi_dash = {chiave_progetto(p): p for p in portfolio_filtrato["Progetto"].unique() if chiave_progetto(p)}
+        
+        def trova_match_semplice(utente_excel):
+            k_ex = chiave_progetto(utente_excel)
+            if not k_ex:
+                return None
             
-            # 1. Ricerca diretta
-            for p_dash in chiavi_correnti_orig:
-                k_da = chiave_progetto(p_dash)
-                if k_da and (k_da in k_ex or k_ex in k_da):
+            # 1. Match esatto sulla chiave pulita
+            if k_ex in mappa_chiavi_dash:
+                return mappa_chiavi_dash[k_ex]
+            
+            # 2. Match contenuto (una chiave è contenuta nell'altra)
+            for k_da, p_dash in mappa_chiavi_dash.items():
+                if k_da in k_ex or k_ex in k_da:
                     return p_dash
                     
-            # 2. Ricerca per parole in comune (ignora srl, snc, ecc.)
-            tk_ex = set(k_ex.split())
-            stopwords = {'srl', 'snc', 'societa', 'soc', 'benefit', 'co', 'di', 'e', 'a', 'c', 'il', 'la', 's', 'spa', 'sas', 'mini', 'pia', 'fesr'}
-            s_ex = tk_ex - stopwords
-            
-            for p_dash in chiavi_correnti_orig:
-                k_da = chiave_progetto(p_dash)
-                tk_da = set(k_da.split())
-                s_da = tk_da - stopwords
-                
-                shared = s_ex & s_da
-                if any(len(w) >= 4 for w in shared):  # Basta una parola uguale (es. "petrarolo")
+            # 3. Match per parole (almeno una parola in comune)
+            words_ex = set(k_ex.split())
+            for k_da, p_dash in mappa_chiavi_dash.items():
+                words_da = set(k_da.split())
+                if words_ex & words_da:
                     return p_dash
             return None
 
-        # Applica il motore di ricerca
-        df_det["Progetto_Match"] = df_det["UTENTE"].apply(match_project)
+        df_det["Progetto_Match"] = df_det["UTENTE"].apply(trova_match_semplice)
         df_det_matched = df_det.dropna(subset=["Progetto_Match"]).copy()
     else:
         df_det_matched = pd.DataFrame()
@@ -2450,9 +2446,6 @@ if vista == "Executive":
             )
         else:
             st.info("Nessun progetto in corso con determina provvisoria trovata.")
-
-        # --- TABELLA 2: DA COMPLETARE ---
-        tab2_nodet = priorita_completa[~priorita_completa["Ha_Determina"]].sort_values(["SAL", "Progetto"], ascending=[True, True]).head(10).copy()
         st.subheader("🎯 Priorità operative: Da Completare (Top 10)")
         if not tab2_nodet.empty:
             tab2_vis = tab2_nodet.copy()
