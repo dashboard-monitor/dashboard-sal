@@ -222,65 +222,53 @@ def pulisci_dataframe(df):
     df = df.dropna(how="all")
     return df
 
- # --- NUOVA FUNZIONE PER ESTRAZIONE DETERMINE (CORRETTA DEFINITIVA) ---
+ # --- FUNZIONE ESTRAZIONE DETERMINE (FOGLIO UNIFICATO) ---
 def estrai_dati_determine(fogli):
-    if "det_provv" not in fogli:
-        return pd.DataFrame()
-        
-    df_raw = fogli["det_provv"].copy()
-    if df_raw.empty:
+    nome_foglio = next((k for k in fogli.keys() if "det" in str(k).lower() or "provv" in str(k).lower()), None)
+    if not nome_foglio:
         return pd.DataFrame()
 
-    # 1. Verifica se le intestazioni corrette sono già nelle colonne o in una riga dei dati
-    cols_upper = [str(c).strip().replace('\n', ' ').replace('\r', '').upper() for c in df_raw.columns]
-    
-    if any("UTENTE" in c or "DETERMINA" in c for c in cols_upper):
-        df = df_raw.copy()
-        df.columns = cols_upper
-    else:
-        # Cerca la riga dove risiedono le vere intestazioni
-        header_idx = None
-        for idx, row in df_raw.iterrows():
-            row_str = " ".join([str(v).upper() for v in row.values if pd.notna(v)])
-            if "UTENTE" in row_str or "DETERMINA" in row_str:
-                header_idx = idx
-                break
-                
-        if header_idx is not None:
-            new_headers = [str(v).strip().replace('\n', ' ').replace('\r', '').upper() for v in df_raw.iloc[header_idx].values]
-            df = df_raw.iloc[header_idx + 1:].copy()
-            df.columns = new_headers
-        else:
-            df = df_raw.copy()
-            df.columns = cols_upper
+    df = fogli[nome_foglio].copy()
+    if df.empty:
+        return pd.DataFrame()
 
-    # 2. Riconoscimento colonne chiave
+    # Normalizza i nomi delle colonne
+    df.columns = [str(c).strip().replace('\n', ' ').replace('\r', '').upper() for c in df.columns]
+
+    # Riconoscimento colonne chiave
     col_utente = next((c for c in df.columns if "UTENTE" in c or "CLIENTE" in c), None)
     col_data = next((c for c in df.columns if "DATA DETERMINA" in c or "DETERMINA" in c), None)
-    col_scad = next((c for c in df.columns if "SCAD" in c and "INVEST" in c), None)
-    col_trasm = next((c for c in df.columns if "TRASM" in c), None)
-    
+    col_scad = next((c for c in df.columns if "SCAD" in c or "INVEST" in c), None)
+    col_trasm = next((c for c in df.columns if "TRASM" in c or "RENDI" in c), None)
+
     if not col_utente or not col_data:
         return pd.DataFrame()
 
-    # 3. Normalizzazione colonne
-    df = df.rename(columns={col_utente: "UTENTE", col_data: "DATA DETERMINA"})
-    if col_scad: df = df.rename(columns={col_scad: "SCAD. COMPL. INVEST."})
-    else: df["SCAD. COMPL. INVEST."] = pd.NaT
-    if col_trasm: df = df.rename(columns={col_trasm: "TRASM. RENDI"})
-    else: df["TRASM. RENDI"] = ""
+    res = pd.DataFrame()
+    res["UTENTE"] = df[col_utente].astype(str).str.strip()
 
-    # 4. Conversioni temporali europee
-    df["DATA DETERMINA"] = pd.to_datetime(df["DATA DETERMINA"], dayfirst=True, errors="coerce")
-    df["SCAD. COMPL. INVEST."] = pd.to_datetime(df["SCAD. COMPL. INVEST."], dayfirst=True, errors="coerce")
+    def parse_date(val):
+        if pd.isna(val) or str(val).strip().lower() in ["", "nan", "nat", "none", "-"]:
+            return pd.NaT
+        if isinstance(val, (datetime, pd.Timestamp)):
+            return pd.Timestamp(val)
+        try:
+            return pd.to_datetime(str(val).strip(), dayfirst=True, errors="coerce")
+        except Exception:
+            return pd.NaT
 
-    df = df.dropna(subset=["DATA DETERMINA"])
+    res["DATA DETERMINA"] = df[col_data].apply(parse_date)
+    res["SCAD. COMPL. INVEST."] = df[col_scad].apply(parse_date) if col_scad else pd.NaT
+    res["TRASM. RENDI"] = df[col_trasm].astype(str).str.strip() if col_trasm else ""
+
+    res = res[res["UTENTE"].ne("") & ~res["UTENTE"].str.lower().isin(["nan", "none", "utente", "id"])].copy()
+    res = res.dropna(subset=["DATA DETERMINA"]).copy()
 
     oggi = pd.Timestamp(ora_italiana().date())
-    df["Giorni Trascorsi"] = (oggi - df["DATA DETERMINA"]).dt.days
-    df["Giorni Rimanenti"] = (df["SCAD. COMPL. INVEST."] - oggi).dt.days
-    
-    return df
+    res["Giorni Trascorsi"] = (oggi - res["DATA DETERMINA"]).dt.days
+    res["Giorni Rimanenti"] = (res["SCAD. COMPL. INVEST."] - oggi).dt.days
+
+    return res.reset_index(drop=True)
 
 # ============================================================
 # CONVERSIONE NUMERICA E PERCENTUALI
