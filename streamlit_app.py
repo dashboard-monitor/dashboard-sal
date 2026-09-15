@@ -2334,25 +2334,36 @@ if vista == "Executive":
     df_det = estrai_dati_determine(fogli)
     
     if not df_det.empty:
-        # Recupera le chiavi pulite dal portafoglio visibile
-        chiavi_correnti = portfolio_filtrato["Progetto"].apply(chiave_progetto).unique()
+        # Crea la lista delle chiavi attualmente visibili nella dashboard
+        chiavi_correnti = list(portfolio_filtrato["Progetto"].apply(chiave_progetto).unique())
         
-        # --- MATCHING FLESSIBILE ---
-        # "Traduttore": fa incrociare "soc. benefit" con "SOCIETA' BENEFIT" riconoscendo le parole in comune
-        def mappa_chiave_flessibile(chiave_excel):
-            for cp in chiavi_correnti:
-                if cp in chiave_excel or chiave_excel in cp:
-                    return cp
-                # Se condividono almeno 2 parole significative (es. "petrarolo" e "benefit")
-                if len(set(chiave_excel.split()) & set(cp.split())) >= 2:
-                    return cp
+        # --- MOTORE DI RICERCA INTELLIGENTE PER I NOMI ---
+        def trova_progetto_corrispondente(chiave_excel):
+            if chiave_excel in chiavi_correnti:
+                return chiave_excel
+            
+            # Cerca parole chiave in comune (es. "stella", "petrarolo")
+            tk_excel = set(chiave_excel.split())
+            for chiave_dash in chiavi_correnti:
+                if chiave_dash in chiave_excel or chiave_excel in chiave_dash:
+                    return chiave_dash
+                
+                tk_dash = set(chiave_dash.split())
+                parole_comuni = tk_excel & tk_dash
+                
+                # Rimuovi parole generiche per evitare falsi positivi
+                parole_forti = {p for p in parole_comuni if p not in ['srl', 'snc', 'societa', 'soc', 'benefit', 'co', 'di', 'e', 'a', 'c', 'il', 'la', 's']}
+                if parole_forti:
+                    return chiave_dash
+                    
             return chiave_excel
 
-        # Crea una nuova colonna con le chiavi allineate
-        df_det["Chiave_Match"] = df_det["Chiave"].apply(mappa_chiave_flessibile)
-
+        # Applica il traduttore intelligente
+        df_det["Chiave"] = df_det["Chiave"].apply(trova_progetto_corrispondente)
+        
+        # Filtra gli alert per i progetti effettivamente presenti
         allarmi_attivi = df_det[
-            (df_det["Chiave_Match"].isin(chiavi_correnti)) &
+            (df_det["Chiave"].isin(chiavi_correnti)) &
             (df_det["DATA DETERMINA"].notna())
         ].copy()
 
@@ -2383,13 +2394,13 @@ if vista == "Executive":
         st.subheader("Priorità operative")
         
         if not df_det.empty:
-            priorita_base["Chiave_Match"] = priorita_base["Progetto"].apply(chiave_progetto)
+            priorita_base["Chiave"] = priorita_base["Progetto"].apply(chiave_progetto)
             
-            # Effettua l'incrocio usando il "Traduttore" appena creato
-            priorita = pd.merge(priorita_base, df_det[["Chiave_Match", "DATA DETERMINA", "SCAD. COMPL. INVEST."]], on="Chiave_Match", how="left")
+            # Incrocia i dati usando le chiavi "tradotte" dal motore intelligente
+            priorita = pd.merge(priorita_base, df_det[["Chiave", "DATA DETERMINA", "SCAD. COMPL. INVEST."]], on="Chiave", how="left")
             priorita["Ha_Determina"] = priorita["DATA DETERMINA"].notna()
             
-            # Prende solo i primi 10: prima le determine (True), poi i SAL più bassi
+            # Ordina in modo furbo: prima le Determine, poi il SAL
             priorita = priorita.sort_values(["Ha_Determina", "SAL", "Progetto"], ascending=[False, True, True]).head(10)
             
             priorita["Data Determina"] = priorita["DATA DETERMINA"].dt.strftime("%d/%m/%Y").fillna("-")
