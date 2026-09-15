@@ -2716,7 +2716,7 @@ elif vista == "Dettaglio progetto":
         
         # Creazione dei Tab per alternare le viste visive
         tab_gantt, tab_avanzamento = st.tabs(
-            ["📊 Diagramma di Gantt (Giorni)", "📈 Avanzamento Attività (%)"]
+            ["📊 Diagramma di Gantt", "📈 Avanzamento Attività (%)"]
         )
 
         with tab_gantt:
