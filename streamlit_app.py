@@ -2431,7 +2431,7 @@ if vista == "Executive":
         tab1_det = pd.DataFrame()
         tab2_nodet = pd.DataFrame()
 
-    # 🚨 ALERT PROGETTI CON DETERMINA PROVVISORIA (TABELLA ROSSA FORMATTATA)
+    # 🚨 ALERT PROGETTI CON DETERMINA PROVVISORIA (TABELLA CON BORDI EVIDENZIATI)
     if not allarmi_attivi.empty:
         with st.expander("🚨 Alert Progetti con Determina Provvisoria", expanded=True):
             rows_list = []
@@ -2442,23 +2442,23 @@ if vista == "Executive":
                 gg_r = int(row["Giorni Rimanenti"]) if pd.notna(row["Giorni Rimanenti"]) else 0
 
                 rows_list.append(
-                    f'<tr style="background-color: #FEF2F2; border-bottom: 1px solid #FCA5A5;">'
-                    f'<td style="padding: 10px 12px; font-weight: 700; color: #991B1B;">{row["Progetto"]}</td>'
-                    f'<td style="padding: 10px 12px; text-align: center; color: #7F1D1D;"><b>{dt_det}</b><br><span style="font-size: 0.82em; opacity: 0.85;">({gg_t} gg trascorsi)</span></td>'
-                    f'<td style="padding: 10px 12px; text-align: center; color: #7F1D1D;"><b>{dt_scad}</b><br><span style="font-size: 0.82em; opacity: 0.85;">(Mancano {gg_r} gg)</span></td>'
+                    f'<tr style="background-color: #FEF2F2; border-bottom: 2px solid #F87171;">'
+                    f'<td style="padding: 10px 12px; font-weight: 700; color: #991B1B; border-right: 1.5px solid #F87171;">{row["Progetto"]}</td>'
+                    f'<td style="padding: 10px 12px; text-align: center; color: #7F1D1D; border-right: 1.5px solid #F87171;"><b>{dt_det}</b><br><span style="font-size: 0.82em; opacity: 0.85;">({gg_t} gg trascorsi)</span></td>'
+                    f'<td style="padding: 10px 12px; text-align: center; color: #7F1D1D; border-right: 1.5px solid #F87171;"><b>{dt_scad}</b><br><span style="font-size: 0.82em; opacity: 0.85;">(Mancano {gg_r} gg)</span></td>'
                     f'<td style="padding: 10px 12px; text-align: center; font-weight: 600; color: #991B1B;">⏳ Da trasmettere per la rendicontazione</td>'
                     f'</tr>'
                 )
 
             html_rows = "".join(rows_list)
             html_table = (
-                f'<div style="border-radius: 8px; border: 1.5px solid #FCA5A5; margin-top: 4px; overflow: hidden;">'
+                f'<div style="border-radius: 8px; border: 2px solid #EF4444; margin-top: 4px; overflow: hidden;">'
                 f'<table style="width: 100%; border-collapse: collapse; font-size: 0.87rem; font-family: sans-serif;">'
                 f'<thead>'
-                f'<tr style="background-color: #FEE2E2; color: #991B1B; text-align: center; border-bottom: 2px solid #F87171;">'
-                f'<th style="padding: 10px 12px; text-align: left;">Progetto</th>'
-                f'<th style="padding: 10px 12px;">Determina Provvisoria</th>'
-                f'<th style="padding: 10px 12px;">Scad. Investimenti</th>'
+                f'<tr style="background-color: #FEE2E2; color: #991B1B; text-align: center; border-bottom: 2.5px solid #EF4444;">'
+                f'<th style="padding: 10px 12px; text-align: left; border-right: 1.5px solid #F87171;">Progetto</th>'
+                f'<th style="padding: 10px 12px; border-right: 1.5px solid #F87171;">Determina Provvisoria</th>'
+                f'<th style="padding: 10px 12px; border-right: 1.5px solid #F87171;">Scad. Investimenti</th>'
                 f'<th style="padding: 10px 12px;">Stato Rendicontazione</th>'
                 f'</tr>'
                 f'</thead>'
