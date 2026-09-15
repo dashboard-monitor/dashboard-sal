@@ -2330,114 +2330,130 @@ if vista == "Executive":
 
     st.markdown("---")
     
-    # --- GESTIONE ALERT DETERMINE ---
+    # --- GESTIONE ALERT E MATCHING DETERMINE ---
     df_det = estrai_dati_determine(fogli)
     
     if not df_det.empty:
-        # Crea la lista delle chiavi attualmente visibili nella dashboard
-        chiavi_correnti = list(portfolio_filtrato["Progetto"].apply(chiave_progetto).unique())
+        # Prende i nomi originali della dashboard
+        chiavi_correnti_orig = portfolio_filtrato["Progetto"].unique()
         
-        # --- MOTORE DI RICERCA INTELLIGENTE PER I NOMI ---
-        def trova_progetto_corrispondente(chiave_excel):
-            if chiave_excel in chiavi_correnti:
-                return chiave_excel
+        # --- SUPER TRADUTTORE NOMI ---
+        def match_project(excel_name):
+            excel_str = str(excel_name).lower()
+            norm_excel = re.sub(r'[^a-z0-9]', '', excel_str)
+            tokens_excel = set(re.findall(r'\b\w+\b', excel_str))
             
-            # Cerca parole chiave in comune (es. "stella", "petrarolo")
-            tk_excel = set(chiave_excel.split())
-            for chiave_dash in chiavi_correnti:
-                if chiave_dash in chiave_excel or chiave_excel in chiave_dash:
-                    return chiave_dash
+            for p_dash in chiavi_correnti_orig:
+                dash_str = str(p_dash).lower()
+                norm_dash = re.sub(r'[^a-z0-9]', '', dash_str)
                 
-                tk_dash = set(chiave_dash.split())
-                parole_comuni = tk_excel & tk_dash
+                # 1. Match diretto senza spazi (es. analisipredittiva == analisipredittiva)
+                if norm_dash in norm_excel or norm_excel in norm_dash:
+                    return p_dash
                 
-                # Rimuovi parole generiche per evitare falsi positivi
-                parole_forti = {p for p in parole_comuni if p not in ['srl', 'snc', 'societa', 'soc', 'benefit', 'co', 'di', 'e', 'a', 'c', 'il', 'la', 's']}
-                if parole_forti:
-                    return chiave_dash
+                # 2. Match per parola chiave forte (es. "petrarolo", "caputo", "stella")
+                tokens_dash = set(re.findall(r'\b\w+\b', dash_str))
+                stopwords = {'srl', 'snc', 'societa', 'soc', 'benefit', 'co', 'di', 'e', 'a', 'c', 'il', 'la', 's', 'spa', 'sas', 'mini', 'pia', 'fesr'}
+                strong_excel = tokens_excel - stopwords
+                strong_dash = tokens_dash - stopwords
+                
+                # Se condividono almeno una parola di almeno 4 lettere (es. "stella", "petrarolo")
+                shared = strong_excel & strong_dash
+                if any(len(w) >= 4 for w in shared):
+                    return p_dash
                     
-            return chiave_excel
+            return None # Nessun match trovato
 
-        # Applica il traduttore intelligente
-        df_det["Chiave"] = df_det["Chiave"].apply(trova_progetto_corrispondente)
-        
-        # Filtra gli alert per i progetti effettivamente presenti
-        allarmi_attivi = df_det[
-            (df_det["Chiave"].isin(chiavi_correnti)) &
-            (df_det["DATA DETERMINA"].notna())
-        ].copy()
+        # Applica il traduttore e scarta chi non trova corrispondenza
+        df_det["Progetto_Match"] = df_det["UTENTE"].apply(match_project)
+        df_det_matched = df_det.dropna(subset=["Progetto_Match"]).copy()
+    else:
+        df_det_matched = pd.DataFrame()
 
+    # --- SEPARAZIONE PRIORITA' IN DUE TABELLE ---
+    priorita_base = portfolio_filtrato[portfolio_filtrato["Stato"].isin(["In stato iniziale", "In stato intermedio"])].copy()
+    
+    if not priorita_base.empty:
+        # Uniamo i dati delle determine alla base dei progetti non completati
+        if not df_det_matched.empty:
+            priorita_completa = pd.merge(
+                priorita_base, 
+                df_det_matched[["Progetto_Match", "DATA DETERMINA", "SCAD. COMPL. INVEST.", "Giorni Trascorsi", "Giorni Rimanenti", "TRASM. RENDI"]], 
+                left_on="Progetto", 
+                right_on="Progetto_Match", 
+                how="left"
+            )
+            priorita_completa["Ha_Determina"] = priorita_completa["DATA DETERMINA"].notna()
+        else:
+            priorita_completa = priorita_base.copy()
+            priorita_completa["Ha_Determina"] = False
+            for col in ["DATA DETERMINA", "SCAD. COMPL. INVEST.", "Giorni Trascorsi", "Giorni Rimanenti", "TRASM. RENDI"]:
+                priorita_completa[col] = pd.NA
+
+        # 🚨 GENERAZIONE ALERT IN CIMA
+        allarmi_attivi = priorita_completa[priorita_completa["Ha_Determina"]].copy()
         if not allarmi_attivi.empty:
-            # Crea l'expander per gli alert
             with st.expander("🚨 Alert Scadenze Determine Provvisorie", expanded=True):
                 for _, row in allarmi_attivi.iterrows():
                     dt_det = row["DATA DETERMINA"].strftime("%d/%m/%Y")
                     dt_scad = row["SCAD. COMPL. INVEST."].strftime("%d/%m/%Y") if pd.notna(row["SCAD. COMPL. INVEST."]) else "N/D"
                     gg_t = int(row["Giorni Trascorsi"]) if pd.notna(row["Giorni Trascorsi"]) else 0
                     gg_r = int(row["Giorni Rimanenti"]) if pd.notna(row["Giorni Rimanenti"]) else 0
-                    
                     trasm = str(row["TRASM. RENDI"]).strip().upper()
+                    
                     testo_alert = (
-                        f"**{row['UTENTE']}** — Determina: **{dt_det}** ({gg_t} gg trascorsi) ➔ "
+                        f"**{row['Progetto']}** — Determina: **{dt_det}** ({gg_t} gg trascorsi) ➔ "
                         f"Scad. Investimenti: **{dt_scad}** (Mancano **{gg_r} gg**)"
                     )
-
                     if trasm == "OK":
                         st.success(f"{testo_alert} | ✅ Trasmesso")
                     else:
                         st.error(f"{testo_alert} | ⏳ Da trasmettere")
 
-    # --- 1. TABELLA PRIORITA' OPERATIVE (SOLO TOP 10) ---
-    priorita_base = portfolio_filtrato[portfolio_filtrato["Stato"].isin(["In stato iniziale", "In stato intermedio"])].copy()
-    
-    if not priorita_base.empty:
-        st.subheader("Priorità operative")
+        # --- TABELLA 1: SOLO PROGETTI CON DETERMINA (Focus Date) ---
+        tab1_det = priorita_completa[priorita_completa["Ha_Determina"]].sort_values(["SAL", "Progetto"], ascending=[True, True]).copy()
         
-        if not df_det.empty:
-            priorita_base["Chiave"] = priorita_base["Progetto"].apply(chiave_progetto)
+        if not tab1_det.empty:
+            st.subheader("📌 Priorità operative: Determine Provvisorie")
+            tab1_vis = tab1_det.copy()
+            tab1_vis["Data Determina"] = tab1_vis["DATA DETERMINA"].dt.strftime("%d/%m/%Y")
+            tab1_vis["Giorni Trascorsi"] = tab1_vis["Giorni Trascorsi"].fillna(0).astype(int).astype(str) + " gg"
+            tab1_vis["Scadenza Invest."] = tab1_vis["SCAD. COMPL. INVEST."].dt.strftime("%d/%m/%Y").fillna("-")
+            tab1_vis["Giorni Rimanenti"] = tab1_vis["Giorni Rimanenti"].fillna(0).astype(int).astype(str) + " gg"
             
-            # Incrocia i dati usando le chiavi "tradotte" dal motore intelligente
-            priorita = pd.merge(priorita_base, df_det[["Chiave", "DATA DETERMINA", "SCAD. COMPL. INVEST."]], on="Chiave", how="left")
-            priorita["Ha_Determina"] = priorita["DATA DETERMINA"].notna()
-            
-            # Ordina in modo furbo: prima le Determine, poi il SAL
-            priorita = priorita.sort_values(["Ha_Determina", "SAL", "Progetto"], ascending=[False, True, True]).head(10)
-            
-            priorita["Data Determina"] = priorita["DATA DETERMINA"].dt.strftime("%d/%m/%Y").fillna("-")
-            priorita["Scadenza Invest."] = priorita["SCAD. COMPL. INVEST."].dt.strftime("%d/%m/%Y").fillna("-")
-        else:
-            priorita = priorita_base.sort_values(["SAL", "Progetto"], ascending=[True, True]).head(10)
-            priorita["Data Determina"] = "-"
-            priorita["Scadenza Invest."] = "-"
+            colonne_tab1 = ["Progetto", "Team", "SAL", "Data Determina", "Giorni Trascorsi", "Scadenza Invest.", "Giorni Rimanenti"]
+            st.dataframe(
+                tab1_vis[colonne_tab1],
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "SAL": st.column_config.ProgressColumn("SAL", min_value=0, max_value=100, format="%.1f%%"),
+                }
+            )
 
-        priorita["Giorni totali"] = priorita["Fatto"].fillna(0) + priorita["Da fare"].fillna(0)
-        priorita["Giorni totali"] = priorita["Giorni totali"].apply(formatta_numero)
-        priorita["Fatto"] = priorita["Fatto"].apply(formatta_numero)
-        priorita["Da fare"] = priorita["Da fare"].apply(formatta_numero)
+        # --- TABELLA 2: PROGETTI SENZA DETERMINA (Focus Avanzamento) ---
+        tab2_nodet = priorita_completa[~priorita_completa["Ha_Determina"]].sort_values(["SAL", "Progetto"], ascending=[True, True]).head(10).copy()
+        
+        if not tab2_nodet.empty:
+            st.subheader("🎯 Priorità operative: Da Completare (Top 10)")
+            tab2_vis = tab2_nodet.copy()
+            tab2_vis["Giorni totali"] = tab2_vis["Fatto"].fillna(0) + tab2_vis["Da fare"].fillna(0)
+            tab2_vis["Giorni totali"] = tab2_vis["Giorni totali"].apply(formatta_numero)
+            tab2_vis["Fatto"] = tab2_vis["Fatto"].apply(formatta_numero)
+            tab2_vis["Da fare"] = tab2_vis["Da fare"].apply(formatta_numero)
 
-        colonne_vis = ["Progetto", "Team", "SAL", "Stato", "Data Determina", "Scadenza Invest.", "Giorni totali", "Fatto", "Da fare"]
-
-        st.dataframe(
-            priorita[colonne_vis],
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "SAL": st.column_config.ProgressColumn("SAL", min_value=0, max_value=100, format="%.1f%%"),
-                "Giorni totali": st.column_config.TextColumn("Giorni totali"),
-                "Fatto": st.column_config.TextColumn("Giorni fatti"),
-                "Da fare": st.column_config.TextColumn("Giorni da fare"),
-            }
-        )
-
-    if "SAL atteso" in portfolio_filtrato.columns and portfolio_filtrato["SAL atteso"].notna().any():
-        st.markdown("---")
-        grafico_reale_atteso(port_ord)
-
-    # --- 2. TABELLA PORTAFOGLIO GENERALE (INTATTA) ---
-    st.markdown("---")
-    st.subheader("Portafoglio progetti")
-    tabella_portafoglio(port_ord)
-    st.download_button("⬇️ Scarica CSV", data=csv_bytes(port_ord), file_name=f"portfolio_{scope}.csv", mime="text/csv")
+            colonne_tab2 = ["Progetto", "Team", "SAL", "Stato", "Giorni totali", "Fatto", "Da fare"]
+            st.dataframe(
+                tab2_vis[colonne_tab2],
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "SAL": st.column_config.ProgressColumn("SAL", min_value=0, max_value=100, format="%.1f%%"),
+                    "Giorni totali": st.column_config.TextColumn("Giorni totali"),
+                    "Fatto": st.column_config.TextColumn("Giorni fatti"),
+                    "Da fare": st.column_config.TextColumn("Giorni da fare"),
+                }
+            )
 
 elif vista == "Effort & Carico di Lavoro":
     df_db_mon, df_tot_mon = estrai_dati_monitor_mensile(fogli)
