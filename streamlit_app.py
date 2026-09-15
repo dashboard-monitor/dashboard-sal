@@ -2431,7 +2431,7 @@ if vista == "Executive":
         tab1_det = pd.DataFrame()
         tab2_nodet = pd.DataFrame()
 
-    # 🚨 ALERT PROGETTI CON DETERMINA PROVVISORIA (TABELLA ROSSA SENZA SPAZIO INFERIORE)
+    # 🚨 ALERT PROGETTI CON DETERMINA PROVVISORIA (TABELLA ROSSA CON SPAZIATURA PERFETTA)
     if not allarmi_attivi.empty:
         with st.expander("🚨 Alert Progetti con Determina Provvisoria", expanded=True):
             rows_list = []
@@ -2442,7 +2442,6 @@ if vista == "Executive":
                 gg_t = int(row["Giorni Trascorsi"]) if pd.notna(row["Giorni Trascorsi"]) else 0
                 gg_r = int(row["Giorni Rimanenti"]) if pd.notna(row["Giorni Rimanenti"]) else 0
 
-                # Rimuove il bordo inferiore dall'ultima riga per non raddoppiare il bordo del box
                 border_b = "border-bottom: 2px solid #F87171;" if i < total_rows - 1 else ""
 
                 rows_list.append(
@@ -2456,7 +2455,7 @@ if vista == "Executive":
 
             html_rows = "".join(rows_list)
             html_table = (
-                f'<div style="border-radius: 8px; border: 2px solid #EF4444; margin-top: 4px; margin-bottom: -12px; overflow: hidden;">'
+                f'<div style="border-radius: 8px; border: 2px solid #EF4444; margin-top: 4px; margin-bottom: 0px; overflow: hidden;">'
                 f'<table style="width: 100%; border-collapse: collapse; font-size: 0.87rem; font-family: sans-serif; margin: 0; padding: 0;">'
                 f'<thead>'
                 f'<tr style="background-color: #FEE2E2; color: #991B1B; text-align: center; border-bottom: 2.5px solid #EF4444;">'
@@ -2471,6 +2470,9 @@ if vista == "Executive":
                 f'</div>'
             )
             st.markdown(html_table, unsafe_allow_html=True)
+            
+        # Distanziale visivo per separare l'expander dal titolo della sezione successiva
+        st.markdown("<div style='margin-bottom: 1.35rem;'></div>", unsafe_allow_html=True)
 
     # --- TABELLA 1: DETERMINE PROVVISORIE ---
     st.subheader("📌 Priorità operative: Progetti con Determina Provvisoria")
