@@ -222,6 +222,38 @@ def pulisci_dataframe(df):
     df = df.dropna(how="all")
     return df
 
+ # --- NUOVA FUNZIONE PER ESTRAZIONE DETERMINE ---
+def estrai_dati_determine(fogli):
+    if "det_provv" not in fogli:
+        return pd.DataFrame()
+        
+    df = fogli["det_provv"].copy()
+    
+    # Assicurati che le colonne abbiano i nomi esatti, ignorando spazi extra
+    df.columns = [str(c).strip().upper() for c in df.columns]
+    
+    if "UTENTE" not in df.columns or "DATA DETERMINA" not in df.columns:
+        return pd.DataFrame()
+
+    # Converte le date in formato datetime in modo sicuro
+    df["DATA DETERMINA"] = pd.to_datetime(df["DATA DETERMINA"], errors="coerce")
+    if "SCAD. COMPL. INVEST." in df.columns:
+        df["SCAD. COMPL. INVEST."] = pd.to_datetime(df["SCAD. COMPL. INVEST."], errors="coerce")
+    else:
+        df["SCAD. COMPL. INVEST."] = pd.NaT
+
+    if "TRASM. RENDI" not in df.columns:
+        df["TRASM. RENDI"] = ""
+
+    # Calcola i giorni trascorsi e rimanenti rispetto a oggi
+    oggi = pd.Timestamp(ora_italiana().date())
+    df["Giorni Trascorsi"] = (oggi - df["DATA DETERMINA"]).dt.days
+    df["Giorni Rimanenti"] = (df["SCAD. COMPL. INVEST."] - oggi).dt.days
+
+    # Crea la chiave standardizzata per fare il matching con il portafoglio progetti
+    df["Chiave"] = df["UTENTE"].apply(chiave_progetto)
+    
+    return df   
 
 # ============================================================
 # CONVERSIONE NUMERICA E PERCENTUALI
@@ -2297,16 +2329,86 @@ if vista == "Executive":
             else:
                 st.info("Giorni non disponibili.")
 
-    priorita = portfolio_filtrato[portfolio_filtrato["Stato"].isin(["In stato iniziale", "In stato intermedio"])].sort_values(["SAL", "Progetto"]).head(10)
-    if not priorita.empty:
-        st.markdown("---")
+    st.markdown("---")
+    
+    # --- GESTIONE ALERT DETERMINE ---
+    df_det = estrai_dati_determine(fogli)
+    
+    if not df_det.empty:
+        # Trova TUTTI i progetti dell'attuale vista che hanno una determina
+        chiavi_correnti = set(portfolio_filtrato["Progetto"].apply(chiave_progetto))
+        allarmi_attivi = df_det[
+            (df_det["Chiave"].isin(chiavi_correnti)) &
+            (df_det["DATA DETERMINA"].notna())
+        ].copy()
+
+        if not allarmi_attivi.empty:
+            # Crea l'expander per gli alert
+            with st.expander("🚨 Alert Scadenze Determine Provvisorie", expanded=True):
+                for _, row in allarmi_attivi.iterrows():
+                    dt_det = row["DATA DETERMINA"].strftime("%d/%m/%Y")
+                    dt_scad = row["SCAD. COMPL. INVEST."].strftime("%d/%m/%Y") if pd.notna(row["SCAD. COMPL. INVEST."]) else "N/D"
+                    gg_t = int(row["Giorni Trascorsi"]) if pd.notna(row["Giorni Trascorsi"]) else 0
+                    gg_r = int(row["Giorni Rimanenti"]) if pd.notna(row["Giorni Rimanenti"]) else 0
+                    
+                    # Recupera lo stato di trasmissione
+                    trasm = str(row["TRASM. RENDI"]).strip().upper()
+                    testo_alert = (
+                        f"**{row['UTENTE']}** — Determina: **{dt_det}** ({gg_t} gg trascorsi) ➔ "
+                        f"Scad. Investimenti: **{dt_scad}** (Mancano **{gg_r} gg**)"
+                    )
+
+                    # Se c'è l'OK diventa VERDE, altrimenti ROSSO
+                    if trasm == "OK":
+                        st.success(f"{testo_alert} | ✅ Trasmesso")
+                    else:
+                        st.error(f"{testo_alert} | ⏳ Da trasmettere")
+
+    # --- 1. TABELLA PRIORITA' OPERATIVE (SOLO TOP 10) ---
+    priorita_base = portfolio_filtrato[portfolio_filtrato["Stato"].isin(["In stato iniziale", "In stato intermedio"])].copy()
+    
+    if not priorita_base.empty:
         st.subheader("Priorità operative")
-        tabella_portafoglio(priorita)
+        
+        if not df_det.empty:
+            priorita_base["Chiave"] = priorita_base["Progetto"].apply(chiave_progetto)
+            priorita = pd.merge(priorita_base, df_det[["Chiave", "DATA DETERMINA", "SCAD. COMPL. INVEST."]], on="Chiave", how="left")
+            priorita["Ha_Determina"] = priorita["DATA DETERMINA"].notna()
+            
+            # Prende solo i primi 10
+            priorita = priorita.sort_values(["Ha_Determina", "SAL", "Progetto"], ascending=[False, True, True]).head(10)
+            
+            priorita["Data Determina"] = priorita["DATA DETERMINA"].dt.strftime("%d/%m/%Y").fillna("-")
+            priorita["Scadenza Invest."] = priorita["SCAD. COMPL. INVEST."].dt.strftime("%d/%m/%Y").fillna("-")
+        else:
+            priorita = priorita_base.sort_values(["SAL", "Progetto"], ascending=[True, True]).head(10)
+            priorita["Data Determina"] = "-"
+            priorita["Scadenza Invest."] = "-"
+
+        priorita["Giorni totali"] = priorita["Fatto"].fillna(0) + priorita["Da fare"].fillna(0)
+        priorita["Giorni totali"] = priorita["Giorni totali"].apply(formatta_numero)
+        priorita["Fatto"] = priorita["Fatto"].apply(formatta_numero)
+        priorita["Da fare"] = priorita["Da fare"].apply(formatta_numero)
+
+        colonne_vis = ["Progetto", "Team", "SAL", "Stato", "Data Determina", "Scadenza Invest.", "Giorni totali", "Fatto", "Da fare"]
+
+        st.dataframe(
+            priorita[colonne_vis],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "SAL": st.column_config.ProgressColumn("SAL", min_value=0, max_value=100, format="%.1f%%"),
+                "Giorni totali": st.column_config.TextColumn("Giorni totali"),
+                "Fatto": st.column_config.TextColumn("Giorni fatti"),
+                "Da fare": st.column_config.TextColumn("Giorni da fare"),
+            }
+        )
 
     if "SAL atteso" in portfolio_filtrato.columns and portfolio_filtrato["SAL atteso"].notna().any():
         st.markdown("---")
         grafico_reale_atteso(port_ord)
 
+    # --- 2. TABELLA PORTAFOGLIO GENERALE (INTATTA) ---
     st.markdown("---")
     st.subheader("Portafoglio progetti")
     tabella_portafoglio(port_ord)
