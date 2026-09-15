@@ -2387,8 +2387,8 @@ if vista == "Executive":
     else:
         df_det_matched = pd.DataFrame()
 
-    # --- INIZIALIZZAZIONE SICURA VARIABILI ---
-    priorita_base = portfolio_filtrato[portfolio_filtrato["Stato"] != "Completato"].copy()
+    # --- INIZIALIZZAZIONE SICURA VARIABILI (INCLUDE TUTTI I PROGETTI) ---
+    priorita_base = portfolio_filtrato.copy()
 
     if not priorita_base.empty and not df_det_matched.empty:
         priorita_completa = pd.merge(
@@ -2409,7 +2409,7 @@ if vista == "Executive":
 
     # --- SEPARAZIONE TABELLE E TRACCIAMENTO COMPLETO DETERMINE ---
     if not priorita_completa.empty and "Ha_Determina" in priorita_completa.columns:
-        # Include tutte le determine provvisorie (sia aperte che già trasmesse con OK)
+        # Prende tutti i progetti con determina (sia da trasmettere che già trasmessi con OK)
         tab1_det = priorita_completa[priorita_completa["Ha_Determina"]].copy()
         tab1_det["Is_OK"] = tab1_det["TRASM. RENDI"].astype(str).str.strip().str.upper() == "OK"
         
@@ -2424,7 +2424,7 @@ if vista == "Executive":
         tab1_det = pd.DataFrame()
         tab2_nodet = pd.DataFrame()
 
-    # 🚨 ALERT E TRACCIAMENTO PROGETTI CON DETERMINA PROVVISORIA (COLORAZIONE DINAMICA & CONTRASTO ELEVATO)
+    # 🚨 ALERT E TRACCIAMENTO PROGETTI CON DETERMINA PROVVISORIA (COLORAZIONE DINAMICA & TESTO NITIDO)
     if not allarmi_attivi.empty:
         with st.expander("🚨 Alert e Tracciamento Determine Provvisorie", expanded=True):
             rows_list = []
@@ -2436,7 +2436,7 @@ if vista == "Executive":
                 gg_r = int(row["Giorni Rimanenti"]) if pd.notna(row["Giorni Rimanenti"]) else 0
                 is_ok = str(row["TRASM. RENDI"]).strip().upper() == "OK"
 
-                # Stili condizionali e contrasto testo ottimizzato per la leggibilità tra parentesi
+                # Stili condizionali: Rosso per "Da trasmettere", Verde per "Trasmesso (OK)"
                 if is_ok:
                     bg_col = "#F0FDF4"
                     border_col = "#86EFAC"
