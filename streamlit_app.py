@@ -1666,10 +1666,17 @@ def grafico_gantt_progetto(df_sal, nome_foglio, progetto):
 
     df_gantt["Attività"] = df_gantt[col_att].astype(str).str.strip()
 
-    if unita == "Minuti" and col_fatto_min and col_da_fare_min:
-        df_gantt["Fatto"] = serie_numerica(df_gantt[col_fatto_min]).fillna(0)
-        df_gantt["Da fare"] = serie_numerica(df_gantt[col_da_fare_min]).fillna(0)
-        col_inizio_sel = col_inizio_min
+    # Se la colonna minuti non esiste nel foglio, calcola la conversione a partire dai giorni (1 gg = 480 min)
+    if unita == "Minuti":
+        if col_fatto_min and col_da_fare_min:
+            df_gantt["Fatto"] = serie_numerica(df_gantt[col_fatto_min]).fillna(0)
+            df_gantt["Da fare"] = serie_numerica(df_gantt[col_da_fare_min]).fillna(0)
+            col_inizio_sel = col_inizio_min
+        else:
+            df_gantt["Fatto"] = serie_numerica(df_gantt[col_fatto_gg]).fillna(0) * 480.0
+            df_gantt["Da fare"] = serie_numerica(df_gantt[col_da_fare_gg]).fillna(0) * 480.0
+            col_inizio_sel = None
+            
         label_u = "min"
         dtick_val = 120
     else:
