@@ -2431,18 +2431,22 @@ if vista == "Executive":
         tab1_det = pd.DataFrame()
         tab2_nodet = pd.DataFrame()
 
-    # 🚨 ALERT PROGETTI CON DETERMINA PROVVISORIA (TABELLA CON BORDI EVIDENZIATI)
+    # 🚨 ALERT PROGETTI CON DETERMINA PROVVISORIA (TABELLA ROSSA SENZA SPAZIO INFERIORE)
     if not allarmi_attivi.empty:
         with st.expander("🚨 Alert Progetti con Determina Provvisoria", expanded=True):
             rows_list = []
-            for _, row in allarmi_attivi.iterrows():
+            total_rows = len(allarmi_attivi)
+            for i, (_, row) in enumerate(allarmi_attivi.iterrows()):
                 dt_det = row["DATA DETERMINA"].strftime("%d/%m/%Y") if pd.notna(row["DATA DETERMINA"]) else "N/D"
                 dt_scad = row["SCAD. COMPL. INVEST."].strftime("%d/%m/%Y") if pd.notna(row["SCAD. COMPL. INVEST."]) else "N/D"
                 gg_t = int(row["Giorni Trascorsi"]) if pd.notna(row["Giorni Trascorsi"]) else 0
                 gg_r = int(row["Giorni Rimanenti"]) if pd.notna(row["Giorni Rimanenti"]) else 0
 
+                # Rimuove il bordo inferiore dall'ultima riga per non raddoppiare il bordo del box
+                border_b = "border-bottom: 2px solid #F87171;" if i < total_rows - 1 else ""
+
                 rows_list.append(
-                    f'<tr style="background-color: #FEF2F2; border-bottom: 2px solid #F87171;">'
+                    f'<tr style="background-color: #FEF2F2; {border_b}">'
                     f'<td style="padding: 10px 12px; font-weight: 700; color: #991B1B; border-right: 1.5px solid #F87171;">{row["Progetto"]}</td>'
                     f'<td style="padding: 10px 12px; text-align: center; color: #7F1D1D; border-right: 1.5px solid #F87171;"><b>{dt_det}</b><br><span style="font-size: 0.82em; opacity: 0.85;">({gg_t} gg trascorsi)</span></td>'
                     f'<td style="padding: 10px 12px; text-align: center; color: #7F1D1D; border-right: 1.5px solid #F87171;"><b>{dt_scad}</b><br><span style="font-size: 0.82em; opacity: 0.85;">(Mancano {gg_r} gg)</span></td>'
@@ -2452,8 +2456,8 @@ if vista == "Executive":
 
             html_rows = "".join(rows_list)
             html_table = (
-                f'<div style="border-radius: 8px; border: 2px solid #EF4444; margin-top: 4px; overflow: hidden;">'
-                f'<table style="width: 100%; border-collapse: collapse; font-size: 0.87rem; font-family: sans-serif;">'
+                f'<div style="border-radius: 8px; border: 2px solid #EF4444; margin-top: 4px; margin-bottom: -12px; overflow: hidden;">'
+                f'<table style="width: 100%; border-collapse: collapse; font-size: 0.87rem; font-family: sans-serif; margin: 0; padding: 0;">'
                 f'<thead>'
                 f'<tr style="background-color: #FEE2E2; color: #991B1B; text-align: center; border-bottom: 2.5px solid #EF4444;">'
                 f'<th style="padding: 10px 12px; text-align: left; border-right: 1.5px solid #F87171;">Progetto</th>'
