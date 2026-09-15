@@ -2431,48 +2431,41 @@ if vista == "Executive":
         tab1_det = pd.DataFrame()
         tab2_nodet = pd.DataFrame()
 
-    # 🚨 ALERT PROGETTI CON DETERMINA PROVVISORIA (TABELLA ROSSA ESTESA)
+    # 🚨 ALERT PROGETTI CON DETERMINA PROVVISORIA (TABELLA ROSSA FORMATTATA)
     if not allarmi_attivi.empty:
         with st.expander("🚨 Alert Progetti con Determina Provvisoria", expanded=True):
-            html_rows = ""
+            rows_list = []
             for _, row in allarmi_attivi.iterrows():
                 dt_det = row["DATA DETERMINA"].strftime("%d/%m/%Y") if pd.notna(row["DATA DETERMINA"]) else "N/D"
                 dt_scad = row["SCAD. COMPL. INVEST."].strftime("%d/%m/%Y") if pd.notna(row["SCAD. COMPL. INVEST."]) else "N/D"
                 gg_t = int(row["Giorni Trascorsi"]) if pd.notna(row["Giorni Trascorsi"]) else 0
                 gg_r = int(row["Giorni Rimanenti"]) if pd.notna(row["Giorni Rimanenti"]) else 0
 
-                html_rows += f"""
-                <tr style="background-color: #FEF2F2; border-bottom: 1px solid #FCA5A5;">
-                    <td style="padding: 10px 12px; font-weight: 700; color: #991B1B;">{row['Progetto']}</td>
-                    <td style="padding: 10px 12px; text-align: center; color: #7F1D1D;">
-                        <b>{dt_det}</b> <br><span style="font-size: 0.82em; opacity: 0.85;">({gg_t} gg trascorsi)</span>
-                    </td>
-                    <td style="padding: 10px 12px; text-align: center; color: #7F1D1D;">
-                        <b>{dt_scad}</b> <br><span style="font-size: 0.82em; opacity: 0.85;">(Mancano {gg_r} gg)</span>
-                    </td>
-                    <td style="padding: 10px 12px; text-align: center; font-weight: 600; color: #991B1B;">
-                        ⏳ Da trasmettere per la rendicontazione
-                    </td>
-                </tr>
-                """
+                rows_list.append(
+                    f'<tr style="background-color: #FEF2F2; border-bottom: 1px solid #FCA5A5;">'
+                    f'<td style="padding: 10px 12px; font-weight: 700; color: #991B1B;">{row["Progetto"]}</td>'
+                    f'<td style="padding: 10px 12px; text-align: center; color: #7F1D1D;"><b>{dt_det}</b><br><span style="font-size: 0.82em; opacity: 0.85;">({gg_t} gg trascorsi)</span></td>'
+                    f'<td style="padding: 10px 12px; text-align: center; color: #7F1D1D;"><b>{dt_scad}</b><br><span style="font-size: 0.82em; opacity: 0.85;">(Mancano {gg_r} gg)</span></td>'
+                    f'<td style="padding: 10px 12px; text-align: center; font-weight: 600; color: #991B1B;">⏳ Da trasmettere per la rendicontazione</td>'
+                    f'</tr>'
+                )
 
-            html_table = f"""
-            <div style="border-radius: 8px; border: 1.5px solid #FCA5A5; margin-top: 4px; overflow: hidden;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 0.87rem; font-family: sans-serif;">
-                    <thead>
-                        <tr style="background-color: #FEE2E2; color: #991B1B; text-align: center; border-bottom: 2px solid #F87171;">
-                            <th style="padding: 10px 12px; text-align: left;">Progetto</th>
-                            <th style="padding: 10px 12px;">Determina Provvisoria</th>
-                            <th style="padding: 10px 12px;">Scad. Investimenti</th>
-                            <th style="padding: 10px 12px;">Stato Rendicontazione</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {html_rows}
-                    </tbody>
-                </table>
-            </div>
-            """
+            html_rows = "".join(rows_list)
+            html_table = (
+                f'<div style="border-radius: 8px; border: 1.5px solid #FCA5A5; margin-top: 4px; overflow: hidden;">'
+                f'<table style="width: 100%; border-collapse: collapse; font-size: 0.87rem; font-family: sans-serif;">'
+                f'<thead>'
+                f'<tr style="background-color: #FEE2E2; color: #991B1B; text-align: center; border-bottom: 2px solid #F87171;">'
+                f'<th style="padding: 10px 12px; text-align: left;">Progetto</th>'
+                f'<th style="padding: 10px 12px;">Determina Provvisoria</th>'
+                f'<th style="padding: 10px 12px;">Scad. Investimenti</th>'
+                f'<th style="padding: 10px 12px;">Stato Rendicontazione</th>'
+                f'</tr>'
+                f'</thead>'
+                f'<tbody>{html_rows}</tbody>'
+                f'</table>'
+                f'</div>'
+            )
             st.markdown(html_table, unsafe_allow_html=True)
 
     # --- TABELLA 1: DETERMINE PROVVISORIE ---
