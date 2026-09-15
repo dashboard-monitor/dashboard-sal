@@ -2431,20 +2431,21 @@ if vista == "Executive":
         tab1_det = pd.DataFrame()
         tab2_nodet = pd.DataFrame()
 
-    # 🚨 ALERT PROGETTI CON DETERMINA PROVVISORIA
+    # 🚨 ALERT PROGETTI CON DETERMINA PROVVISORIA (COMPATTO CON SCROLLBAR)
     if not allarmi_attivi.empty:
         with st.expander("🚨 Alert Progetti con Determina Provvisoria", expanded=True):
-            for _, row in allarmi_attivi.iterrows():
-                dt_det = row["DATA DETERMINA"].strftime("%d/%m/%Y") if pd.notna(row["DATA DETERMINA"]) else "N/D"
-                dt_scad = row["SCAD. COMPL. INVEST."].strftime("%d/%m/%Y") if pd.notna(row["SCAD. COMPL. INVEST."]) else "N/D"
-                gg_t = int(row["Giorni Trascorsi"]) if pd.notna(row["Giorni Trascorsi"]) else 0
-                gg_r = int(row["Giorni Rimanenti"]) if pd.notna(row["Giorni Rimanenti"]) else 0
+            with st.container(height=220):
+                for _, row in allarmi_attivi.iterrows():
+                    dt_det = row["DATA DETERMINA"].strftime("%d/%m/%Y") if pd.notna(row["DATA DETERMINA"]) else "N/D"
+                    dt_scad = row["SCAD. COMPL. INVEST."].strftime("%d/%m/%Y") if pd.notna(row["SCAD. COMPL. INVEST."]) else "N/D"
+                    gg_t = int(row["Giorni Trascorsi"]) if pd.notna(row["Giorni Trascorsi"]) else 0
+                    gg_r = int(row["Giorni Rimanenti"]) if pd.notna(row["Giorni Rimanenti"]) else 0
 
-                testo_alert = (
-                    f"**{row['Progetto']}** — Determina: **{dt_det}** ({gg_t} gg trascorsi) ➔ "
-                    f"Scad. Investimenti: **{dt_scad}** (Mancano **{gg_r} gg**)"
-                )
-                st.error(f"{testo_alert} | ⏳ Da trasmettere per la rendicontazione")
+                    testo_alert = (
+                        f"**{row['Progetto']}** — Determina: **{dt_det}** ({gg_t} gg trascorsi) ➔ "
+                        f"Scad. Investimenti: **{dt_scad}** (Mancano **{gg_r} gg**)"
+                    )
+                    st.error(f"{testo_alert} | ⏳ Da trasmettere per la rendicontazione")
 
     # --- TABELLA 1: DETERMINE PROVVISORIE ---
     st.subheader("📌 Priorità operative: Progetti con Determina Provvisoria")
