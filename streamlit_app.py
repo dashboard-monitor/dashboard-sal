@@ -1716,7 +1716,7 @@ def grafico_gantt_progetto(df_sal, nome_foglio, progetto):
             name=f"Fatto ({unita})",
             orientation="h",
             marker=dict(color="#2CA02C"),
-            hovertemplate=f"<b>%{{y}}</b><br>Fatto: %{{x:.2f}} {label_u}<extra></extra>",
+            hovertemplate=f"<b>%{{y}}</b><br>Fatto: %{{x:.4~g}} {label_u}<extra></extra>",
         )
     )
 
@@ -1728,7 +1728,7 @@ def grafico_gantt_progetto(df_sal, nome_foglio, progetto):
             name=f"Da Fare ({unita})",
             orientation="h",
             marker=dict(color="#D62728"),
-            hovertemplate=f"<b>%{{y}}</b><br>Da Fare: %{{x:.2f}} {label_u}<extra></extra>",
+            hovertemplate=f"<b>%{{y}}</b><br>Da Fare: %{{x:.4~g}} {label_u}<extra></extra>",
         )
     )
 
