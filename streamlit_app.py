@@ -229,31 +229,30 @@ def estrai_dati_determine(fogli):
         
     df = fogli["det_provv"].copy()
     
-    # Assicurati che le colonne abbiano i nomi esatti, ignorando spazi extra
-    df.columns = [str(c).strip().upper() for c in df.columns]
+    # Pulizia drastica dei nomi colonne: rimuove spazi extra e "a capo" invisibili
+    df.columns = [str(c).strip().replace("\n", " ").upper() for c in df.columns]
     
     if "UTENTE" not in df.columns or "DATA DETERMINA" not in df.columns:
         return pd.DataFrame()
 
-    # Converte le date in formato datetime in modo sicuro
-    df["DATA DETERMINA"] = pd.to_datetime(df["DATA DETERMINA"], errors="coerce")
+    # FIX CRITICO: dayfirst=True forza il formato Europeo (Giorno/Mese/Anno)
+    df["DATA DETERMINA"] = pd.to_datetime(df["DATA DETERMINA"], dayfirst=True, errors="coerce")
+    
     if "SCAD. COMPL. INVEST." in df.columns:
-        df["SCAD. COMPL. INVEST."] = pd.to_datetime(df["SCAD. COMPL. INVEST."], errors="coerce")
+        df["SCAD. COMPL. INVEST."] = pd.to_datetime(df["SCAD. COMPL. INVEST."], dayfirst=True, errors="coerce")
     else:
         df["SCAD. COMPL. INVEST."] = pd.NaT
 
     if "TRASM. RENDI" not in df.columns:
         df["TRASM. RENDI"] = ""
 
-    # Calcola i giorni trascorsi e rimanenti rispetto a oggi
     oggi = pd.Timestamp(ora_italiana().date())
     df["Giorni Trascorsi"] = (oggi - df["DATA DETERMINA"]).dt.days
     df["Giorni Rimanenti"] = (df["SCAD. COMPL. INVEST."] - oggi).dt.days
 
-    # Crea la chiave standardizzata per fare il matching con il portafoglio progetti
     df["Chiave"] = df["UTENTE"].apply(chiave_progetto)
     
-    return df   
+    return df
 
 # ============================================================
 # CONVERSIONE NUMERICA E PERCENTUALI
@@ -2335,10 +2334,25 @@ if vista == "Executive":
     df_det = estrai_dati_determine(fogli)
     
     if not df_det.empty:
-        # Trova TUTTI i progetti dell'attuale vista che hanno una determina
-        chiavi_correnti = set(portfolio_filtrato["Progetto"].apply(chiave_progetto))
+        # Recupera le chiavi pulite dal portafoglio visibile
+        chiavi_correnti = portfolio_filtrato["Progetto"].apply(chiave_progetto).unique()
+        
+        # --- MATCHING FLESSIBILE ---
+        # "Traduttore": fa incrociare "soc. benefit" con "SOCIETA' BENEFIT" riconoscendo le parole in comune
+        def mappa_chiave_flessibile(chiave_excel):
+            for cp in chiavi_correnti:
+                if cp in chiave_excel or chiave_excel in cp:
+                    return cp
+                # Se condividono almeno 2 parole significative (es. "petrarolo" e "benefit")
+                if len(set(chiave_excel.split()) & set(cp.split())) >= 2:
+                    return cp
+            return chiave_excel
+
+        # Crea una nuova colonna con le chiavi allineate
+        df_det["Chiave_Match"] = df_det["Chiave"].apply(mappa_chiave_flessibile)
+
         allarmi_attivi = df_det[
-            (df_det["Chiave"].isin(chiavi_correnti)) &
+            (df_det["Chiave_Match"].isin(chiavi_correnti)) &
             (df_det["DATA DETERMINA"].notna())
         ].copy()
 
@@ -2351,14 +2365,12 @@ if vista == "Executive":
                     gg_t = int(row["Giorni Trascorsi"]) if pd.notna(row["Giorni Trascorsi"]) else 0
                     gg_r = int(row["Giorni Rimanenti"]) if pd.notna(row["Giorni Rimanenti"]) else 0
                     
-                    # Recupera lo stato di trasmissione
                     trasm = str(row["TRASM. RENDI"]).strip().upper()
                     testo_alert = (
                         f"**{row['UTENTE']}** — Determina: **{dt_det}** ({gg_t} gg trascorsi) ➔ "
                         f"Scad. Investimenti: **{dt_scad}** (Mancano **{gg_r} gg**)"
                     )
 
-                    # Se c'è l'OK diventa VERDE, altrimenti ROSSO
                     if trasm == "OK":
                         st.success(f"{testo_alert} | ✅ Trasmesso")
                     else:
@@ -2371,11 +2383,13 @@ if vista == "Executive":
         st.subheader("Priorità operative")
         
         if not df_det.empty:
-            priorita_base["Chiave"] = priorita_base["Progetto"].apply(chiave_progetto)
-            priorita = pd.merge(priorita_base, df_det[["Chiave", "DATA DETERMINA", "SCAD. COMPL. INVEST."]], on="Chiave", how="left")
+            priorita_base["Chiave_Match"] = priorita_base["Progetto"].apply(chiave_progetto)
+            
+            # Effettua l'incrocio usando il "Traduttore" appena creato
+            priorita = pd.merge(priorita_base, df_det[["Chiave_Match", "DATA DETERMINA", "SCAD. COMPL. INVEST."]], on="Chiave_Match", how="left")
             priorita["Ha_Determina"] = priorita["DATA DETERMINA"].notna()
             
-            # Prende solo i primi 10
+            # Prende solo i primi 10: prima le determine (True), poi i SAL più bassi
             priorita = priorita.sort_values(["Ha_Determina", "SAL", "Progetto"], ascending=[False, True, True]).head(10)
             
             priorita["Data Determina"] = priorita["DATA DETERMINA"].dt.strftime("%d/%m/%Y").fillna("-")
