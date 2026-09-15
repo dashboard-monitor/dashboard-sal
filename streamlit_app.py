@@ -2409,11 +2409,11 @@ if vista == "Executive":
 
     # --- SEPARAZIONE TABELLE E TRACCIAMENTO COMPLETO DETERMINE ---
     if not priorita_completa.empty and "Ha_Determina" in priorita_completa.columns:
-        # Prende tutti i progetti con determina (sia da trasmettere che già trasmessi con OK)
         tab1_det = priorita_completa[priorita_completa["Ha_Determina"]].copy()
         tab1_det["Is_OK"] = tab1_det["TRASM. RENDI"].astype(str).str.strip().str.upper() == "OK"
         
-        # Ordina: prima le pratiche da trasmettere (Is_OK = False) per Giorni Trascorsi decrescenti, poi quelle già trasmesse (OK)
+        # Ordina prima le pratiche da trasmettere (Is_OK=False), poi quelle già trasmesse (Is_OK=True),
+        # entrambe ordinate per Giorni Trascorsi decrescenti (data determina più lontana in alto)
         allarmi_attivi = tab1_det.sort_values(["Is_OK", "Giorni Trascorsi"], ascending=[True, False]).copy()
         
         # Tabella Progetti da Accelerare: TUTTI i progetti in Stato Iniziale
@@ -2424,9 +2424,9 @@ if vista == "Executive":
         tab1_det = pd.DataFrame()
         tab2_nodet = pd.DataFrame()
 
-    # 🚨 ALERT E TRACCIAMENTO PROGETTI CON DETERMINA PROVVISORIA (COLORAZIONE DINAMICA & TESTO NITIDO)
+    # 🚨 ALERT PROGETTI CON DETERMINA PROVVISORIA (GIORNI TRASCORSI DECRESCENTI)
     if not allarmi_attivi.empty:
-        with st.expander("🚨 Alert e Tracciamento Determine Provvisorie", expanded=True):
+        with st.expander("🚨 Alert Progetti con Determina Provvisoria", expanded=True):
             rows_list = []
             total_rows = len(allarmi_attivi)
             for i, (_, row) in enumerate(allarmi_attivi.iterrows()):
@@ -2436,7 +2436,6 @@ if vista == "Executive":
                 gg_r = int(row["Giorni Rimanenti"]) if pd.notna(row["Giorni Rimanenti"]) else 0
                 is_ok = str(row["TRASM. RENDI"]).strip().upper() == "OK"
 
-                # Stili condizionali: Rosso per "Da trasmettere", Verde per "Trasmesso (OK)"
                 if is_ok:
                     bg_col = "#F0FDF4"
                     border_col = "#86EFAC"
