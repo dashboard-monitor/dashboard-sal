@@ -1666,7 +1666,7 @@ def grafico_gantt_progetto(df_sal, nome_foglio, progetto):
 
     df_gantt["Attività"] = df_gantt[col_att].astype(str).str.strip()
 
-    # Se la colonna minuti non esiste nel foglio, calcola la conversione a partire dai giorni (1 gg = 480 min)
+    # Gestione dinamica dell'unità di misura e scala dell'asse X
     if unita == "Minuti":
         if col_fatto_min and col_da_fare_min:
             df_gantt["Fatto"] = serie_numerica(df_gantt[col_fatto_min]).fillna(0)
@@ -1678,13 +1678,15 @@ def grafico_gantt_progetto(df_sal, nome_foglio, progetto):
             col_inizio_sel = None
             
         label_u = "min"
-        dtick_val = 120
+        dtick_val = None  # Plotly calcola lo step ottimale in automatico
+        max_ticks = 15    # Evita la sovrapposizione delle scritte
     else:
         df_gantt["Fatto"] = serie_numerica(df_gantt[col_fatto_gg]).fillna(0)
         df_gantt["Da fare"] = serie_numerica(df_gantt[col_da_fare_gg]).fillna(0)
         col_inizio_sel = col_inizio_gg
         label_u = "gg"
         dtick_val = 2
+        max_ticks = 20
 
     if col_inizio_sel and col_inizio_sel in df_gantt.columns:
         df_gantt["Inizio"] = serie_numerica(df_gantt[col_inizio_sel]).fillna(0)
@@ -1694,7 +1696,7 @@ def grafico_gantt_progetto(df_sal, nome_foglio, progetto):
 
     fig = go.Figure()
 
-    # 1. Traccia Trasparente per scostamento temporale
+    # 1. Traccia Trasparente per posizionare le barre lungo la sequenza temporale
     fig.add_trace(
         go.Bar(
             y=df_gantt["Attività"],
@@ -1738,6 +1740,7 @@ def grafico_gantt_progetto(df_sal, nome_foglio, progetto):
             showgrid=True,
             gridcolor="#E5E7EB",
             dtick=dtick_val,
+            nticks=max_ticks,
         ),
         yaxis=dict(
             title="",
