@@ -2409,21 +2409,23 @@ if vista == "Executive":
 
     # --- SEPARAZIONE TABELLE, ORDINAMENTO E ESCLUSIONE PROGETTI CON "OK" ---
     if not priorita_completa.empty and "Ha_Determina" in priorita_completa.columns:
-        # Mostra negli Alert solo i progetti con determina e SENZA "OK" in TRASM. RENDI (colonna F)
+        # 1. Alert Scadenze: solo con determina e SENZA "OK" in TRASM. RENDI
         mask_alert = (
             priorita_completa["Ha_Determina"] & 
             (priorita_completa["TRASM. RENDI"].astype(str).str.strip().str.upper() != "OK")
         )
-        
-        # Ordinamento decrescente sui Giorni Trascorsi (più vecchi in alto)
         allarmi_attivi = (
             priorita_completa[mask_alert]
             .sort_values("Giorni Trascorsi", ascending=False)
             .copy()
         )
         
+        # 2. Tabella Determine Provvisorie
         tab1_det = priorita_completa[priorita_completa["Ha_Determina"]].sort_values(["SAL", "Progetto"], ascending=[True, True]).copy()
-        tab2_nodet = priorita_completa[~priorita_completa["Ha_Determina"]].sort_values(["SAL", "Progetto"], ascending=[True, True]).head(10).copy()
+        
+        # 3. Tabella Progetti da Accelerare: TUTTI i progetti in Stato Iniziale (con o senza determina)
+        mask_stato_iniziale = (priorita_completa["Stato"] == "In stato iniziale")
+        tab2_nodet = priorita_completa[mask_stato_iniziale].sort_values(["SAL", "Progetto"], ascending=[True, True]).copy()
     else:
         allarmi_attivi = pd.DataFrame()
         tab1_det = pd.DataFrame()
@@ -2463,8 +2465,8 @@ if vista == "Executive":
     else:
         st.info("Nessun progetto in corso con determina provvisoria trovata.")
 
-    # --- TABELLA 2: DA COMPLETARE ---
-    st.subheader("🎯 Priorità operative: Da Completare (Top 10)")
+    # --- TABELLA 2: PROGETTI IN STATO INIZIALE ---
+    st.subheader("🎯 Priorità operative: Progetti da accelerare (in Stato Iniziale)")
     if not tab2_nodet.empty:
         tab2_vis = tab2_nodet.copy()
         tab2_vis["Giorni totali"] = tab2_vis["Fatto"].fillna(0) + tab2_vis["Da fare"].fillna(0)
@@ -2485,7 +2487,7 @@ if vista == "Executive":
             }
         )
     else:
-        st.info("Nessun progetto senza determina.")
+        st.info("Nessun progetto attualmente in stato iniziale.")
 
     if "SAL atteso" in portfolio_filtrato.columns and portfolio_filtrato["SAL atteso"].notna().any():
         st.markdown("---")
