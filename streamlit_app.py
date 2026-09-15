@@ -2407,23 +2407,16 @@ if vista == "Executive":
     else:
         priorita_completa = pd.DataFrame()
 
-    # --- SEPARAZIONE TABELLE, ORDINAMENTO E ESCLUSIONE PROGETTI CON "OK" ---
+    # --- SEPARAZIONE TABELLE E TRACCIAMENTO COMPLETO DETERMINE ---
     if not priorita_completa.empty and "Ha_Determina" in priorita_completa.columns:
-        # 1. Alert Scadenze: solo con determina e SENZA "OK" in TRASM. RENDI
-        mask_alert = (
-            priorita_completa["Ha_Determina"] & 
-            (priorita_completa["TRASM. RENDI"].astype(str).str.strip().str.upper() != "OK")
-        )
-        allarmi_attivi = (
-            priorita_completa[mask_alert]
-            .sort_values("Giorni Trascorsi", ascending=False)
-            .copy()
-        )
+        # Prende tutti i progetti con determina
+        tab1_det = priorita_completa[priorita_completa["Ha_Determina"]].copy()
+        tab1_det["Is_OK"] = tab1_det["TRASM. RENDI"].astype(str).str.strip().str.upper() == "OK"
         
-        # 2. Tabella Determine Provvisorie
-        tab1_det = priorita_completa[priorita_completa["Ha_Determina"]].sort_values(["SAL", "Progetto"], ascending=[True, True]).copy()
+        # Ordina: prima i NON trasmessi (Is_OK = False) ordinati per Giorni Trascorsi decrescenti, poi i trasmessi
+        allarmi_attivi = tab1_det.sort_values(["Is_OK", "Giorni Trascorsi"], ascending=[True, False]).copy()
         
-        # 3. Tabella Progetti da Accelerare: TUTTI i progetti in Stato Iniziale (con o senza determina)
+        # Tabella Progetti da Accelerare: TUTTI i progetti in Stato Iniziale
         mask_stato_iniziale = (priorita_completa["Stato"] == "In stato iniziale")
         tab2_nodet = priorita_completa[mask_stato_iniziale].sort_values(["SAL", "Progetto"], ascending=[True, True]).copy()
     else:
@@ -2431,9 +2424,9 @@ if vista == "Executive":
         tab1_det = pd.DataFrame()
         tab2_nodet = pd.DataFrame()
 
-    # 🚨 ALERT PROGETTI CON DETERMINA PROVVISORIA (TABELLA ROSSA CON SPAZIATURA PERFETTA)
+    # 🚨 ALERT E TRACCIAMENTO PROGETTI CON DETERMINA PROVVISORIA (COLORAZIONE DINAMICA ROSSO/VERDE)
     if not allarmi_attivi.empty:
-        with st.expander("🚨 Alert Progetti con Determina Provvisoria", expanded=True):
+        with st.expander("🚨 Alert e Tracciamento Determine Provvisorie", expanded=True):
             rows_list = []
             total_rows = len(allarmi_attivi)
             for i, (_, row) in enumerate(allarmi_attivi.iterrows()):
@@ -2441,15 +2434,30 @@ if vista == "Executive":
                 dt_scad = row["SCAD. COMPL. INVEST."].strftime("%d/%m/%Y") if pd.notna(row["SCAD. COMPL. INVEST."]) else "N/D"
                 gg_t = int(row["Giorni Trascorsi"]) if pd.notna(row["Giorni Trascorsi"]) else 0
                 gg_r = int(row["Giorni Rimanenti"]) if pd.notna(row["Giorni Rimanenti"]) else 0
+                is_ok = str(row["TRASM. RENDI"]).strip().upper() == "OK"
 
-                border_b = "border-bottom: 2px solid #F87171;" if i < total_rows - 1 else ""
+                # Stili condizionali: Rosso per "Da trasmettere", Verde per "Trasmesso (OK)"
+                if is_ok:
+                    bg_col = "#F0FDF4"
+                    border_col = "#86EFAC"
+                    text_main = "#166534"
+                    text_sub = "#14532D"
+                    status_badge = "✅ Trasmesso in rendicontazione"
+                else:
+                    bg_col = "#FEF2F2"
+                    border_col = "#F87171"
+                    text_main = "#991B1B"
+                    text_sub = "#7F1D1D"
+                    status_badge = "⏳ Da trasmettere per la rendicontazione"
+
+                border_b = f"border-bottom: 2px solid {border_col};" if i < total_rows - 1 else ""
 
                 rows_list.append(
-                    f'<tr style="background-color: #FEF2F2; {border_b}">'
-                    f'<td style="padding: 10px 12px; font-weight: 700; color: #991B1B; border-right: 1.5px solid #F87171;">{row["Progetto"]}</td>'
-                    f'<td style="padding: 10px 12px; text-align: center; color: #7F1D1D; border-right: 1.5px solid #F87171;"><b>{dt_det}</b><br><span style="font-size: 0.82em; opacity: 0.85;">({gg_t} gg trascorsi)</span></td>'
-                    f'<td style="padding: 10px 12px; text-align: center; color: #7F1D1D; border-right: 1.5px solid #F87171;"><b>{dt_scad}</b><br><span style="font-size: 0.82em; opacity: 0.85;">(Mancano {gg_r} gg)</span></td>'
-                    f'<td style="padding: 10px 12px; text-align: center; font-weight: 600; color: #991B1B;">⏳ Da trasmettere per la rendicontazione</td>'
+                    f'<tr style="background-color: {bg_col}; {border_b}">'
+                    f'<td style="padding: 10px 12px; font-weight: 700; color: {text_main}; border-right: 1.5px solid {border_col};">{row["Progetto"]}</td>'
+                    f'<td style="padding: 10px 12px; text-align: center; color: {text_sub}; border-right: 1.5px solid {border_col};"><b>{dt_det}</b><br><span style="font-size: 0.82em; opacity: 0.85;">({gg_t} gg trascorsi)</span></td>'
+                    f'<td style="padding: 10px 12px; text-align: center; color: {text_sub}; border-right: 1.5px solid {border_col};"><b>{dt_scad}</b><br><span style="font-size: 0.82em; opacity: 0.85;">(Mancano {gg_r} gg)</span></td>'
+                    f'<td style="padding: 10px 12px; text-align: center; font-weight: 600; color: {text_main};">{status_badge}</td>'
                     f'</tr>'
                 )
 
@@ -2470,8 +2478,8 @@ if vista == "Executive":
                 f'</div>'
             )
             st.markdown(html_table, unsafe_allow_html=True)
-            
-        # Distanziale visivo per separare l'expander dal titolo della sezione successiva
+
+        # Spaziatore inferiore equilibrato prima del titolo successivo
         st.markdown("<div style='margin-bottom: 1.35rem;'></div>", unsafe_allow_html=True)
 
     # --- TABELLA 1: DETERMINE PROVVISORIE ---
