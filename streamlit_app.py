@@ -2346,38 +2346,49 @@ if vista == "Executive":
 
     st.markdown("---")
     
-    # --- GESTIONE ALERT E MATCHING DETERMINE ---
+    # --- GESTIONE ALERT E MATCHING DETERMINE (RIGOROSO & ESCLUSIONE OK) ---
     df_det = estrai_dati_determine(fogli)
+    progetti_dash_unici = list(portfolio_filtrato["Progetto"].unique())
     
-    if not df_det.empty:
-        mappa_chiavi_dash = {chiave_progetto(p): p for p in portfolio_filtrato["Progetto"].unique() if chiave_progetto(p)}
-        
-        def trova_match_semplice(utente_excel):
-            k_ex = chiave_progetto(utente_excel)
-            if not k_ex:
+    if not df_det.empty and progetti_dash_unici:
+        STOPWORDS_RIGIDE = {
+            "srl", "snc", "spa", "sas", "soc", "societa", "coop", "cooperativa",
+            "benefit", "co", "di", "e", "a", "c", "il", "la", "s", "mini", "pia",
+            "fesr", "della", "del", "dello", "dei", "fratelli", "srls", "unipersonale"
+        }
+
+        def trova_match_rigoroso(utente_excel):
+            if not utente_excel or pd.isna(utente_excel):
                 return None
             
-            if k_ex in mappa_chiavi_dash:
-                return mappa_chiavi_dash[k_ex]
+            u_clean = pulisci_nome_progetto(utente_excel)
+            u_key = chiave_progetto(u_clean)
+            if not u_key:
+                return None
             
-            for k_da, p_dash in mappa_chiavi_dash.items():
-                if k_da in k_ex or k_ex in k_da:
-                    return p_dash
+            for p in progetti_dash_unici:
+                if u_key == chiave_progetto(p):
+                    return p
+            
+            u_tokens = {w for w in u_key.split() if w not in STOPWORDS_RIGIDE and len(w) >= 3}
+            if not u_tokens:
+                return None
+            
+            for p in progetti_dash_unici:
+                p_key = chiave_progetto(p)
+                p_tokens = {w for w in p_key.split() if w not in STOPWORDS_RIGIDE and len(w) >= 3}
+                if p_tokens and (u_tokens.issubset(p_tokens) or p_tokens.issubset(u_tokens)):
+                    return p
                     
-            words_ex = set(k_ex.split())
-            for k_da, p_dash in mappa_chiavi_dash.items():
-                words_da = set(k_da.split())
-                if words_ex & words_da:
-                    return p_dash
             return None
 
-        df_det["Progetto_Match"] = df_det["UTENTE"].apply(trova_match_semplice)
+        df_det["Progetto_Match"] = df_det["UTENTE"].apply(trova_match_rigoroso)
         df_det_matched = df_det.dropna(subset=["Progetto_Match"]).copy()
     else:
         df_det_matched = pd.DataFrame()
 
     # --- INIZIALIZZAZIONE SICURA VARIABILI ---
-    priorita_base = portfolio_filtrato[portfolio_filtrato["Stato"].isin(["In stato iniziale", "In stato intermedio"])].copy()
+    priorita_base = portfolio_filtrato[portfolio_filtrato["Stato"] != "Completato"].copy()
 
     if not priorita_base.empty and not df_det_matched.empty:
         priorita_completa = pd.merge(
@@ -2396,9 +2407,14 @@ if vista == "Executive":
     else:
         priorita_completa = pd.DataFrame()
 
-    # --- SEPARAZIONE TABELLE ---
+    # --- SEPARAZIONE TABELLE ED ESCLUSIONE PROGETTI CON "OK" NEGLI ALERT ---
     if not priorita_completa.empty and "Ha_Determina" in priorita_completa.columns:
-        allarmi_attivi = priorita_completa[priorita_completa["Ha_Determina"]].copy()
+        # Mostra negli Alert solo i progetti con determina e SENZA "OK" in TRASM. RENDI (colonna F)
+        mask_alert = (
+            priorita_completa["Ha_Determina"] & 
+            (priorita_completa["TRASM. RENDI"].astype(str).str.strip().str.upper() != "OK")
+        )
+        allarmi_attivi = priorita_completa[mask_alert].copy()
         tab1_det = priorita_completa[priorita_completa["Ha_Determina"]].sort_values(["SAL", "Progetto"], ascending=[True, True]).copy()
         tab2_nodet = priorita_completa[~priorita_completa["Ha_Determina"]].sort_values(["SAL", "Progetto"], ascending=[True, True]).head(10).copy()
     else:
@@ -2406,24 +2422,20 @@ if vista == "Executive":
         tab1_det = pd.DataFrame()
         tab2_nodet = pd.DataFrame()
 
-    # 🚨 ALERT IN CIMA ALLA PAGINA
+    # 🚨 ALERT PROGETTI CON DETERMINA PROVVISORIA
     if not allarmi_attivi.empty:
-        with st.expander("🚨 Alert Scadenze Determine Provvisorie", expanded=True):
+        with st.expander("🚨 Alert Progetti con Determina Provvisoria", expanded=True):
             for _, row in allarmi_attivi.iterrows():
                 dt_det = row["DATA DETERMINA"].strftime("%d/%m/%Y") if pd.notna(row["DATA DETERMINA"]) else "N/D"
                 dt_scad = row["SCAD. COMPL. INVEST."].strftime("%d/%m/%Y") if pd.notna(row["SCAD. COMPL. INVEST."]) else "N/D"
                 gg_t = int(row["Giorni Trascorsi"]) if pd.notna(row["Giorni Trascorsi"]) else 0
                 gg_r = int(row["Giorni Rimanenti"]) if pd.notna(row["Giorni Rimanenti"]) else 0
-                trasm = str(row["TRASM. RENDI"]).strip().upper()
 
                 testo_alert = (
                     f"**{row['Progetto']}** — Determina: **{dt_det}** ({gg_t} gg trascorsi) ➔ "
                     f"Scad. Investimenti: **{dt_scad}** (Mancano **{gg_r} gg**)"
                 )
-                if trasm == "OK":
-                    st.success(f"{testo_alert} | ✅ Trasmesso")
-                else:
-                    st.error(f"{testo_alert} | ⏳ Da trasmettere")
+                st.error(f"{testo_alert} | ⏳ Da trasmettere per la rendicontazione")
 
     # --- TABELLA 1: DETERMINE PROVVISORIE ---
     st.subheader("📌 Priorità operative: Determine Provvisorie")
