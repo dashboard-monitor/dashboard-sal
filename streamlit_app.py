@@ -2409,11 +2409,11 @@ if vista == "Executive":
 
     # --- SEPARAZIONE TABELLE E TRACCIAMENTO COMPLETO DETERMINE ---
     if not priorita_completa.empty and "Ha_Determina" in priorita_completa.columns:
-        # Prende tutti i progetti con determina (sia da trasmettere che già trasmessi con OK)
+        # Include tutte le determine provvisorie (sia aperte che già trasmesse con OK)
         tab1_det = priorita_completa[priorita_completa["Ha_Determina"]].copy()
         tab1_det["Is_OK"] = tab1_det["TRASM. RENDI"].astype(str).str.strip().str.upper() == "OK"
         
-        # Ordina: prima i NON trasmessi (Is_OK = False) ordinati per Giorni Trascorsi decrescenti, poi i trasmessi
+        # Ordina: prima le pratiche da trasmettere (Is_OK = False) per Giorni Trascorsi decrescenti, poi quelle già trasmesse (OK)
         allarmi_attivi = tab1_det.sort_values(["Is_OK", "Giorni Trascorsi"], ascending=[True, False]).copy()
         
         # Tabella Progetti da Accelerare: TUTTI i progetti in Stato Iniziale
@@ -2424,7 +2424,7 @@ if vista == "Executive":
         tab1_det = pd.DataFrame()
         tab2_nodet = pd.DataFrame()
 
-    # 🚨 ALERT E TRACCIAMENTO PROGETTI CON DETERMINA PROVVISORIA (COLORAZIONE DINAMICA ROSSO/VERDE)
+    # 🚨 ALERT E TRACCIAMENTO PROGETTI CON DETERMINA PROVVISORIA (COLORAZIONE DINAMICA & CONTRASTO ELEVATO)
     if not allarmi_attivi.empty:
         with st.expander("🚨 Alert e Tracciamento Determine Provvisorie", expanded=True):
             rows_list = []
@@ -2436,7 +2436,7 @@ if vista == "Executive":
                 gg_r = int(row["Giorni Rimanenti"]) if pd.notna(row["Giorni Rimanenti"]) else 0
                 is_ok = str(row["TRASM. RENDI"]).strip().upper() == "OK"
 
-                # Stili condizionali: Rosso per "Da trasmettere", Verde per "Trasmesso (OK)"
+                # Stili condizionali e contrasto testo ottimizzato per la leggibilità tra parentesi
                 if is_ok:
                     bg_col = "#F0FDF4"
                     border_col = "#86EFAC"
@@ -2455,8 +2455,8 @@ if vista == "Executive":
                 rows_list.append(
                     f'<tr style="background-color: {bg_col}; {border_b}">'
                     f'<td style="padding: 10px 12px; font-weight: 700; color: {text_main}; border-right: 1.5px solid {border_col};">{row["Progetto"]}</td>'
-                    f'<td style="padding: 10px 12px; text-align: center; color: {text_sub}; border-right: 1.5px solid {border_col};"><b>{dt_det}</b><br><span style="font-size: 0.82em; opacity: 0.85;">({gg_t} gg trascorsi)</span></td>'
-                    f'<td style="padding: 10px 12px; text-align: center; color: {text_sub}; border-right: 1.5px solid {border_col};"><b>{dt_scad}</b><br><span style="font-size: 0.82em; opacity: 0.85;">(Mancano {gg_r} gg)</span></td>'
+                    f'<td style="padding: 10px 12px; text-align: center; color: {text_sub}; border-right: 1.5px solid {border_col};"><b>{dt_det}</b><br><span style="font-size: 0.85em; font-weight: 600; color: {text_sub}; opacity: 0.95;">({gg_t} gg trascorsi)</span></td>'
+                    f'<td style="padding: 10px 12px; text-align: center; color: {text_sub}; border-right: 1.5px solid {border_col};"><b>{dt_scad}</b><br><span style="font-size: 0.85em; font-weight: 600; color: {text_sub}; opacity: 0.95;">(Mancano {gg_r} gg)</span></td>'
                     f'<td style="padding: 10px 12px; text-align: center; font-weight: 600; color: {text_main};">{status_badge}</td>'
                     f'</tr>'
                 )
@@ -2480,7 +2480,7 @@ if vista == "Executive":
             st.markdown(html_table, unsafe_allow_html=True)
 
         st.markdown("<div style='margin-bottom: 1.35rem;'></div>", unsafe_allow_html=True)
-
+        
     # --- TABELLA 1: DETERMINE PROVVISORIE ---
     st.subheader("📌 Priorità operative: Progetti con Determina Provvisoria")
     if not tab1_det.empty:
