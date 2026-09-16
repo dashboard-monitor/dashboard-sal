@@ -270,6 +270,68 @@ def estrai_dati_determine(fogli):
 
     return res.reset_index(drop=True)
 
+# --- ESTRAZIONE DATI PIANIFICAZIONE DA MINDS_SAL ---
+def estrai_dati_pianificazione_minds_sal(fogli):
+    if "MINDS_SAL" not in fogli:
+        return pd.DataFrame()
+    
+    df_sal = fogli["MINDS_SAL"].copy()
+    
+    col_proj = trova_colonna(df_sal, exact=["UTENTE", "PROGETTO", "NOME PROGETTO"]) or (df_sal.columns[4] if len(df_sal.columns) > 4 else None)
+    col_as = trova_colonna(df_sal, contains_all=["data", "determina"]) or (df_sal.columns[44] if len(df_sal.columns) > 44 else None)
+    col_at = trova_colonna(df_sal, contains_all=["data", "fine", "prevista"]) or trova_colonna(df_sal, contains_all=["proroga"]) or (df_sal.columns[45] if len(df_sal.columns) > 45 else None)
+    col_ax = trova_colonna(df_sal, contains_all=["delta", "disponibili"]) or trova_colonna(df_sal, contains_all=["margine"]) or (df_sal.columns[49] if len(df_sal.columns) > 49 else None)
+
+    if not col_proj:
+        return pd.DataFrame()
+
+    rows = []
+    for _, row in df_sal.iterrows():
+        p_val = row[col_proj]
+        if pd.isna(p_val) or str(p_val).strip().lower() in ["", "nan", "none", "utente"]:
+            continue
+        
+        p_key = chiave_progetto(p_val)
+        if not p_key:
+            continue
+
+        as_val = pd.to_datetime(row[col_as], dayfirst=True, errors="coerce") if col_as and col_as in df_sal.columns else pd.NaT
+        at_val = pd.to_datetime(row[col_at], dayfirst=True, errors="coerce") if col_at and col_at in df_sal.columns else pd.NaT
+        ax_val = serie_numerica(pd.Series([row[col_ax]])).iloc[0] if col_ax and col_ax in df_sal.columns else float("nan")
+
+        rows.append({
+            "Chiave": p_key,
+            "Progetto_Raw": str(p_val).strip(),
+            "Data_Determina": as_val,
+            "Data_Scadenza": at_val,
+            "Margine_Temporale": ax_val
+        })
+
+    if not rows:
+        return pd.DataFrame()
+
+    df_ext = pd.DataFrame(rows)
+
+    # Consolidamento per Progetto: min per Margine temporale (AX)
+    aggregated = []
+    for p_key, group in df_ext.groupby("Chiave", sort=False):
+        p_name = group["Progetto_Raw"].iloc[0]
+        dt_det = group["Data_Determina"].dropna().iloc[0] if not group["Data_Determina"].dropna().empty else pd.NaT
+        dt_scad = group["Data_Scadenza"].dropna().iloc[0] if not group["Data_Scadenza"].dropna().empty else pd.NaT
+        
+        valid_ax = group["Margine_Temporale"].dropna()
+        margine_min = valid_ax.min() if not valid_ax.empty else float("nan")
+
+        aggregated.append({
+            "Chiave": p_key,
+            "Progetto_MINDS": p_name,
+            "Data determina": dt_det,
+            "Data tassativa di scadenza": dt_scad,
+            "Margine temporale": margine_min
+        })
+
+    return pd.DataFrame(aggregated)
+
 # ============================================================
 # CONVERSIONE NUMERICA E PERCENTUALI
 # ============================================================
@@ -2129,12 +2191,12 @@ vista = st.sidebar.radio(
     [
         "Executive",
         "Effort & Carico di Lavoro",
+        "Pianificazione & Alert",
         "Avanzamento",
         "Dettaglio progetto",
         "Dati sorgente",
     ],
 )
-
 
 # ============================================================
 # COSTRUZIONE PORTAFOGLIO
@@ -2532,6 +2594,93 @@ if vista == "Executive":
     st.subheader("Portafoglio progetti")
     tabella_portafoglio(port_ord)
     st.download_button("⬇️ Scarica CSV", data=csv_bytes(port_ord), file_name=f"portfolio_{scope}.csv", mime="text/csv")
+
+# ============================================================
+# NUOVA VISTA: PIANIFICAZIONE & ALERT
+# ============================================================
+elif vista == "Pianificazione & Alert":
+    st.subheader(f"📅 Pianificazione & Alert · {scope}")
+    
+    # Considera tutti i progetti in corso (esclusi quelli completati)
+    df_plan_base = portfolio_filtrato[portfolio_filtrato["Stato"] != "Completato"].copy()
+    
+    if df_plan_base.empty:
+        st.info("Nessun progetto in corso risponde ai filtri selezionati.")
+    else:
+        df_minds_plan = estrai_dati_pianificazione_minds_sal(fogli)
+        
+        if not df_minds_plan.empty:
+            df_plan_base["Chiave"] = df_plan_base["Progetto"].apply(chiave_progetto)
+            df_merged = pd.merge(
+                df_plan_base,
+                df_minds_plan[["Chiave", "Data determina", "Data tassativa di scadenza", "Margine temporale"]],
+                on="Chiave",
+                how="left"
+            )
+        else:
+            df_merged = df_plan_base.copy()
+            df_merged["Data determina"] = pd.NaT
+            df_merged["Data tassativa di scadenza"] = pd.NaT
+            df_merged["Margine temporale"] = float("nan")
+
+        # Progetti con alert d'urgenza (Margine temporale <= 0)
+        df_urgenti = df_merged[df_merged["Margine temporale"].notna() & (df_merged["Margine temporale"] <= 0)].copy()
+        
+        if not df_urgenti.empty:
+            st.markdown("### 🚨 Alert Progetti URGENTI")
+            for _, row in df_urgenti.iterrows():
+                dt_det_str = row["Data determina"].strftime("%d/%m/%Y") if pd.notna(row["Data determina"]) else "N/D"
+                dt_scad_str = row["Data tassativa di scadenza"].strftime("%d/%m/%Y") if pd.notna(row["Data tassativa di scadenza"]) else "N/D"
+                margine_val = int(row["Margine temporale"]) if pd.notna(row["Margine temporale"]) else 0
+                
+                st.markdown(
+                    f"""
+                    <div style="background-color: #FEF2F2; border: 2.5px solid #DC2626; border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; box-shadow: 0px 3px 6px rgba(220, 38, 38, 0.15);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                            <div>
+                                <span style="font-size: 1.25rem; font-weight: 900; color: #DC2626; letter-spacing: 0.5px;">❗ URGENTE!</span>
+                                <span style="font-size: 1.15rem; font-weight: 700; color: #991B1B; margin-left: 10px;">{row['Progetto']}</span>
+                                <span style="font-size: 0.85rem; font-weight: 600; color: #7F1D1D; background: rgba(220, 38, 38, 0.1); padding: 2px 8px; border-radius: 4px; margin-left: 8px;">{row['Team']}</span>
+                            </div>
+                            <div style="background-color: #DC2626; color: white; padding: 6px 14px; border-radius: 8px; font-weight: 800; font-size: 0.95rem;">
+                                Margine temporale: {margine_val} gg
+                            </div>
+                        </div>
+                        <div style="margin-top: 10px; font-size: 0.88rem; color: #7F1D1D; border-top: 1px dashed rgba(220, 38, 38, 0.3); padding-top: 8px;">
+                            <b>Data determina:</b> {dt_det_str} &nbsp;·&nbsp; <b>Data tassativa di scadenza:</b> {dt_scad_str} &nbsp;·&nbsp; <b>SAL attuale:</b> {formatta_percentuale(row['SAL'])}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            st.markdown("---")
+
+        st.markdown("### 📋 Progetti in Corso e Pianificazione Tempistiche")
+        
+        df_tab_plan = df_merged.copy()
+        df_tab_plan["Data determina"] = df_tab_plan["Data determina"].dt.strftime("%d/%m/%Y").fillna("-")
+        df_tab_plan["Data tassativa di scadenza"] = df_tab_plan["Data tassativa di scadenza"].dt.strftime("%d/%m/%Y").fillna("-")
+        df_tab_plan["Margine temporale (gg)"] = df_tab_plan["Margine temporale"].apply(lambda v: f"{int(v)} gg" if pd.notna(v) else "N/D")
+        df_tab_plan["Stato Alert"] = df_tab_plan["Margine temporale"].apply(lambda v: "❗ URGENTE!" if pd.notna(v) and v <= 0 else ("OK" if pd.notna(v) else "N/D"))
+
+        colonne_plan = ["Progetto", "Team", "SAL", "Stato", "Data determina", "Data tassativa di scadenza", "Margine temporale (gg)", "Stato Alert"]
+
+        st.dataframe(
+            df_tab_plan[colonne_plan],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "SAL": st.column_config.ProgressColumn("SAL", min_value=0, max_value=100, format="%.1f%%"),
+                "Stato Alert": st.column_config.TextColumn("Stato Alert"),
+            }
+        )
+
+        st.download_button(
+            "⬇️ Scarica Pianificazione (CSV)",
+            data=csv_bytes(df_tab_plan[colonne_plan]),
+            file_name=f"pianificazione_alert_{scope}.csv",
+            mime="text/csv"
+        )
 
 elif vista == "Effort & Carico di Lavoro":
     df_db_mon, df_tot_mon = estrai_dati_monitor_mensile(fogli)
