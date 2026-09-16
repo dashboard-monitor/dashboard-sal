@@ -2606,21 +2606,18 @@ elif vista == "Pianificazione & Alert":
         if not df_chart_plan.empty:
             st.markdown("### 📊 Entità Margine Temporale (Giorni Residui)")
             
-            # Assegnazione fasce semaforiche
+            # Assegnazione fasce semaforiche (Allineate allo Stato Alert OK > 0 gg)
             def fascia_margine(v):
                 if v <= 0:
-                    return "Scaduto / In ritardo (≤ 0 gg)"
-                elif v <= 30:
-                    return "Attenzione (1 - 30 gg)"
+                    return "Scaduto / URGENTE (≤ 0 gg)"
                 else:
-                    return "In tempo (> 30 gg)"
+                    return "In tempo (> 0 gg)"
 
             df_chart_plan["Fascia"] = df_chart_plan["Margine temporale"].apply(fascia_margine)
             
             colori_margine = {
-                "Scaduto / In ritardo (≤ 0 gg)": "#DC2626",
-                "Attenzione (1 - 30 gg)": "#F59E0B",
-                "In tempo (> 30 gg)": "#167D3E"
+                "Scaduto / URGENTE (≤ 0 gg)": "#DC2626",
+                "In tempo (> 0 gg)": "#167D3E"
             }
 
             fig_margine = px.bar(
