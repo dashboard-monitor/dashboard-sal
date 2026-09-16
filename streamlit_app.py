@@ -2667,6 +2667,21 @@ elif vista == "Pianificazione & Alert":
 
         colonne_plan = ["Progetto", "Team", "SAL", "Stato", "Data determina", "Data tassativa di scadenza", "Margine temporale (gg)", "Stato Alert"]
 
+        # CSS mirato solo per questa specifica tabella
+        st.markdown(
+            """
+            <style>
+                div[data-testid="stDataFrame"] th, 
+                div[data-testid="stDataFrame"] [role="columnheader"] * {
+                    font-size: 0.95rem !important;
+                    font-weight: 800 !important;
+                    color: #000000 !important;
+                }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+
         st.dataframe(
             df_tab_plan[colonne_plan],
             use_container_width=True,
