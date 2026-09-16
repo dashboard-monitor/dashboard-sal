@@ -2600,6 +2600,60 @@ elif vista == "Pianificazione & Alert":
                 )
             st.markdown("---")
 
+        # --- GRAFICO VISIVO MARGINE TEMPORALE RESIDUO ---
+        df_chart_plan = df_merged[df_merged["Margine temporale"].notna()].sort_values("Margine temporale", ascending=True).copy()
+        
+        if not df_chart_plan.empty:
+            st.markdown("### 📊 Entità Margine Temporale (Giorni Residui)")
+            
+            # Assegnazione fasce semaforiche
+            def fascia_margine(v):
+                if v <= 0:
+                    return "Scaduto / In ritardo (≤ 0 gg)"
+                elif v <= 30:
+                    return "Attenzione (1 - 30 gg)"
+                else:
+                    return "In tempo (> 30 gg)"
+
+            df_chart_plan["Fascia"] = df_chart_plan["Margine temporale"].apply(fascia_margine)
+            
+            colori_margine = {
+                "Scaduto / In ritardo (≤ 0 gg)": "#DC2626",
+                "Attenzione (1 - 30 gg)": "#F59E0B",
+                "In tempo (> 30 gg)": "#167D3E"
+            }
+
+            fig_margine = px.bar(
+                df_chart_plan,
+                x="Margine temporale",
+                y="Progetto",
+                orientation="h",
+                color="Fascia",
+                color_discrete_map=colori_margine,
+                text="Margine temporale",
+                title="Giorni disponibili prima della scadenza tassativa",
+                labels={"Margine temporale": "Giorni Rimanenti", "Progetto": ""},
+                custom_data=["Team", "SAL"]
+            )
+
+            fig_margine.update_traces(
+                texttemplate="%{x:.0f} gg",
+                textposition="outside",
+                cliponaxis=False,
+                hovertemplate="<b>%{y}</b> (%{customdata[0]})<br>Margine: <b>%{x:.0f} gg</b><br>SAL: %{customdata[1]:.1f}%<extra></extra>"
+            )
+
+            fig_margine.update_layout(
+                height=max(380, len(df_chart_plan) * 35),
+                xaxis_title="Giorni disponibili (Margine temporale)",
+                yaxis=dict(autorange="reversed"),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                template="plotly_white"
+            )
+
+            st.plotly_chart(fig_margine, use_container_width=True, config=PLOTLY_CONFIG)
+            st.markdown("---")
+
         st.markdown("### 📋 Progetti in Corso e Pianificazione Tempistiche")
         
         # Ordina in modo crescente per Margine temporale (dal più piccolo al più grande)
