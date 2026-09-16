@@ -2657,7 +2657,9 @@ elif vista == "Pianificazione & Alert":
 
         st.markdown("### 📋 Progetti in Corso e Pianificazione Tempistiche")
         
-        df_tab_plan = df_merged.copy()
+        # Ordina in modo crescente per Margine temporale (dal più piccolo al più grande)
+        df_tab_plan = df_merged.sort_values(by="Margine temporale", ascending=True, na_position="last").copy()
+        
         df_tab_plan["Data determina"] = df_tab_plan["Data determina"].dt.strftime("%d/%m/%Y").fillna("-")
         df_tab_plan["Data tassativa di scadenza"] = df_tab_plan["Data tassativa di scadenza"].dt.strftime("%d/%m/%Y").fillna("-")
         df_tab_plan["Margine temporale (gg)"] = df_tab_plan["Margine temporale"].apply(lambda v: f"{int(v)} gg" if pd.notna(v) else "N/D")
