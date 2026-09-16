@@ -2486,61 +2486,6 @@ if vista == "Executive":
         tab1_det = pd.DataFrame()
         tab2_nodet = pd.DataFrame()
 
-    # 🚨 ALERT PROGETTI CON DETERMINA PROVVISORIA (GIORNI TRASCORSI DECRESCENTI)
-    if not allarmi_attivi.empty:
-        with st.expander("🚨 Alert Progetti con Determina Provvisoria", expanded=True):
-            rows_list = []
-            total_rows = len(allarmi_attivi)
-            for i, (_, row) in enumerate(allarmi_attivi.iterrows()):
-                dt_det = row["DATA DETERMINA"].strftime("%d/%m/%Y") if pd.notna(row["DATA DETERMINA"]) else "N/D"
-                dt_scad = row["SCAD. COMPL. INVEST."].strftime("%d/%m/%Y") if pd.notna(row["SCAD. COMPL. INVEST."]) else "N/D"
-                gg_t = int(row["Giorni Trascorsi"]) if pd.notna(row["Giorni Trascorsi"]) else 0
-                gg_r = int(row["Giorni Rimanenti"]) if pd.notna(row["Giorni Rimanenti"]) else 0
-                is_ok = str(row["TRASM. RENDI"]).strip().upper() == "OK"
-
-                if is_ok:
-                    bg_col = "#F0FDF4"
-                    border_col = "#86EFAC"
-                    text_main = "#166534"
-                    text_sub = "#14532D"
-                    status_badge = "✅ Trasmesso in rendicontazione"
-                else:
-                    bg_col = "#FEF2F2"
-                    border_col = "#F87171"
-                    text_main = "#991B1B"
-                    text_sub = "#7F1D1D"
-                    status_badge = "⏳ Da trasmettere per la rendicontazione"
-
-                border_b = f"border-bottom: 2px solid {border_col};" if i < total_rows - 1 else ""
-
-                rows_list.append(
-                    f'<tr style="background-color: {bg_col}; {border_b}">'
-                    f'<td style="padding: 10px 12px; font-weight: 700; color: {text_main}; border-right: 1.5px solid {border_col};">{row["Progetto"]}</td>'
-                    f'<td style="padding: 10px 12px; text-align: center; color: {text_sub}; border-right: 1.5px solid {border_col};"><b>{dt_det}</b><br><span style="font-size: 0.85em; font-weight: 600; color: {text_sub}; opacity: 0.95;">({gg_t} gg trascorsi)</span></td>'
-                    f'<td style="padding: 10px 12px; text-align: center; color: {text_sub}; border-right: 1.5px solid {border_col};"><b>{dt_scad}</b><br><span style="font-size: 0.85em; font-weight: 600; color: {text_sub}; opacity: 0.95;">(Mancano {gg_r} gg)</span></td>'
-                    f'<td style="padding: 10px 12px; text-align: center; font-weight: 600; color: {text_main};">{status_badge}</td>'
-                    f'</tr>'
-                )
-
-            html_rows = "".join(rows_list)
-            html_table = (
-                f'<div style="border-radius: 8px; border: 2px solid #EF4444; margin-top: 4px; margin-bottom: 0px; overflow: hidden;">'
-                f'<table style="width: 100%; border-collapse: collapse; font-size: 0.87rem; font-family: sans-serif; margin: 0; padding: 0;">'
-                f'<thead>'
-                f'<tr style="background-color: #FEE2E2; color: #991B1B; text-align: center; border-bottom: 2.5px solid #EF4444;">'
-                f'<th style="padding: 10px 12px; text-align: left; border-right: 1.5px solid #F87171;">Progetto</th>'
-                f'<th style="padding: 10px 12px; border-right: 1.5px solid #F87171;">Determina Provvisoria</th>'
-                f'<th style="padding: 10px 12px; border-right: 1.5px solid #F87171;">Scad. Investimenti</th>'
-                f'<th style="padding: 10px 12px;">Stato Rendicontazione</th>'
-                f'</tr>'
-                f'</thead>'
-                f'<tbody>{html_rows}</tbody>'
-                f'</table>'
-                f'</div>'
-            )
-            st.markdown(html_table, unsafe_allow_html=True)
-
-        st.markdown("<div style='margin-bottom: 1.35rem;'></div>", unsafe_allow_html=True)
         
     # --- TABELLA 1: DETERMINE PROVVISORIE ---
     st.subheader("📌 Priorità operative: Progetti con Determina Provvisoria")
