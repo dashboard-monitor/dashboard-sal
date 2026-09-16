@@ -2600,6 +2600,53 @@ elif vista == "Pianificazione & Alert":
                 )
             st.markdown("---")
 
+        # --- TABELLA: PROGETTI IN CORSO E PIANIFICAZIONE ---
+        st.markdown("### 📋 Progetti in Corso e Pianificazione Tempistiche")
+        
+        # Ordina in modo crescente per Margine temporale (dal più piccolo al più grande)
+        df_tab_plan = df_merged.sort_values(by="Margine temporale", ascending=True, na_position="last").copy()
+        
+        df_tab_plan["Data determina"] = df_tab_plan["Data determina"].dt.strftime("%d/%m/%Y").fillna("-")
+        df_tab_plan["Data tassativa di scadenza"] = df_tab_plan["Data tassativa di scadenza"].dt.strftime("%d/%m/%Y").fillna("-")
+        df_tab_plan["Margine temporale (gg)"] = df_tab_plan["Margine temporale"].apply(lambda v: f"{int(v)} gg" if pd.notna(v) else "N/D")
+        df_tab_plan["Stato Alert"] = df_tab_plan["Margine temporale"].apply(lambda v: "❗ URGENTE!" if pd.notna(v) and v <= 0 else ("OK" if pd.notna(v) else "N/D"))
+
+        colonne_plan = ["Progetto", "Team", "SAL", "Stato", "Data determina", "Data tassativa di scadenza", "Margine temporale (gg)", "Stato Alert"]
+
+        # CSS mirato solo per questa specifica tabella
+        st.markdown(
+            """
+            <style>
+                div[data-testid="stDataFrame"] th, 
+                div[data-testid="stDataFrame"] [role="columnheader"] * {
+                    font-size: 0.95rem !important;
+                    font-weight: 800 !important;
+                    color: #000000 !important;
+                }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.dataframe(
+            df_tab_plan[colonne_plan],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "SAL": st.column_config.ProgressColumn("SAL", min_value=0, max_value=100, format="%.1f%%"),
+                "Stato Alert": st.column_config.TextColumn("Stato Alert"),
+            }
+        )
+
+        st.download_button(
+            "⬇️ Scarica Pianificazione (CSV)",
+            data=csv_bytes(df_tab_plan[colonne_plan]),
+            file_name=f"pianificazione_alert_{scope}.csv",
+            mime="text/csv"
+        )
+
+        st.markdown("---")
+
         # --- GRAFICO VISIVO MARGINE TEMPORALE RESIDUO ---
         df_chart_plan = df_merged[df_merged["Margine temporale"].notna()].sort_values("Margine temporale", ascending=True).copy()
         
@@ -2649,51 +2696,6 @@ elif vista == "Pianificazione & Alert":
             )
 
             st.plotly_chart(fig_margine, use_container_width=True, config=PLOTLY_CONFIG)
-            st.markdown("---")
-
-        st.markdown("### 📋 Progetti in Corso e Pianificazione Tempistiche")
-        
-        # Ordina in modo crescente per Margine temporale (dal più piccolo al più grande)
-        df_tab_plan = df_merged.sort_values(by="Margine temporale", ascending=True, na_position="last").copy()
-        
-        df_tab_plan["Data determina"] = df_tab_plan["Data determina"].dt.strftime("%d/%m/%Y").fillna("-")
-        df_tab_plan["Data tassativa di scadenza"] = df_tab_plan["Data tassativa di scadenza"].dt.strftime("%d/%m/%Y").fillna("-")
-        df_tab_plan["Margine temporale (gg)"] = df_tab_plan["Margine temporale"].apply(lambda v: f"{int(v)} gg" if pd.notna(v) else "N/D")
-        df_tab_plan["Stato Alert"] = df_tab_plan["Margine temporale"].apply(lambda v: "❗ URGENTE!" if pd.notna(v) and v <= 0 else ("OK" if pd.notna(v) else "N/D"))
-
-        colonne_plan = ["Progetto", "Team", "SAL", "Stato", "Data determina", "Data tassativa di scadenza", "Margine temporale (gg)", "Stato Alert"]
-
-        # CSS mirato solo per questa specifica tabella
-        st.markdown(
-            """
-            <style>
-                div[data-testid="stDataFrame"] th, 
-                div[data-testid="stDataFrame"] [role="columnheader"] * {
-                    font-size: 0.95rem !important;
-                    font-weight: 800 !important;
-                    color: #000000 !important;
-                }
-            </style>
-            """,
-            unsafe_allow_html=True
-        )
-
-        st.dataframe(
-            df_tab_plan[colonne_plan],
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "SAL": st.column_config.ProgressColumn("SAL", min_value=0, max_value=100, format="%.1f%%"),
-                "Stato Alert": st.column_config.TextColumn("Stato Alert"),
-            }
-        )
-
-        st.download_button(
-            "⬇️ Scarica Pianificazione (CSV)",
-            data=csv_bytes(df_tab_plan[colonne_plan]),
-            file_name=f"pianificazione_alert_{scope}.csv",
-            mime="text/csv"
-        )
 
 elif vista == "Effort & Carico di Lavoro":
     df_db_mon, df_tot_mon = estrai_dati_monitor_mensile(fogli)
