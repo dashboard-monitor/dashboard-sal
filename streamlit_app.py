@@ -2540,7 +2540,7 @@ if vista == "Executive":
         tab2_nodet = pd.DataFrame()
         
     # --- TABELLA 1: DETERMINE PROVVISORIE ---
-    st.subheader("📌 Priorità operative: Progetti con Determina Provvisoria")
+    st.subheader("📌 Priorità operative: Progetti con Determina (Margine temporale)")
     if not tab1_det.empty:
         tab1_vis = tab1_det.copy()
         
