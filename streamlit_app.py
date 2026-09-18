@@ -2449,6 +2449,7 @@ if vista == "Executive":
     
     # --- GESTIONE ALERT E MATCHING DETERMINE (RIGOROSO & ESCLUSIONE OK) ---
     df_det = estrai_dati_determine(fogli)
+    df_minds_plan = estrai_dati_pianificazione_minds_sal(fogli)
     progetti_dash_unici = list(portfolio_filtrato["Progetto"].unique())
     
     if not df_det.empty and progetti_dash_unici:
@@ -2488,8 +2489,9 @@ if vista == "Executive":
     else:
         df_det_matched = pd.DataFrame()
 
-    # --- INIZIALIZZAZIONE SICURA VARIABILI (INCLUDE TUTTI I PROGETTI) ---
+    # --- INIZIALIZZAZIONE SICURA VARIABILI (INCLUDE TUTTI I PROGETTI E MARGINE TEMPORALE) ---
     priorita_base = portfolio_filtrato.copy()
+    priorita_base["Chiave"] = priorita_base["Progetto"].apply(chiave_progetto)
 
     if not priorita_base.empty and not df_det_matched.empty:
         priorita_completa = pd.merge(
@@ -2508,16 +2510,25 @@ if vista == "Executive":
     else:
         priorita_completa = pd.DataFrame()
 
+    # Unione del Margine Temporale da MINDS_SAL
+    if not priorita_completa.empty:
+        if not df_minds_plan.empty:
+            priorita_completa = pd.merge(
+                priorita_completa,
+                df_minds_plan[["Chiave", "Margine temporale"]],
+                on="Chiave",
+                how="left"
+            )
+        else:
+            priorita_completa["Margine temporale"] = float("nan")
+
     # --- SEPARAZIONE TABELLE E TRACCIAMENTO COMPLETO DETERMINE ---
     if not priorita_completa.empty and "Ha_Determina" in priorita_completa.columns:
         tab1_det = priorita_completa[priorita_completa["Ha_Determina"]].copy()
         tab1_det["Is_OK"] = tab1_det["TRASM. RENDI"].astype(str).str.strip().str.upper() == "OK"
         
-        # Ordina prima le pratiche da trasmettere (Is_OK=False), poi quelle già trasmesse (Is_OK=True),
-        # entrambe ordinate per Giorni Trascorsi decrescenti (data determina più lontana in alto)
         allarmi_attivi = tab1_det.sort_values(["Is_OK", "Giorni Trascorsi"], ascending=[True, False]).copy()
         
-        # Tabella Progetti da Accelerare: TUTTI i progetti in Stato Iniziale
         mask_stato_iniziale = (priorita_completa["Stato"] == "In stato iniziale")
         tab2_nodet = priorita_completa[mask_stato_iniziale].sort_values(["SAL", "Progetto"], ascending=[True, True]).copy()
     else:
@@ -2530,17 +2541,25 @@ if vista == "Executive":
     st.subheader("📌 Priorità operative: Progetti con Determina Provvisoria")
     if not tab1_det.empty:
         tab1_vis = tab1_det.copy()
+        
+        # Ordina per Margine temporale crescente (dal valore più piccolo/urgente al più grande)
+        tab1_vis = tab1_vis.sort_values(by="Margine temporale", ascending=True, na_position="last").copy()
+
         tab1_vis["Data Determina"] = tab1_vis["DATA DETERMINA"].dt.strftime("%d/%m/%Y")
         tab1_vis["Giorni Trascorsi"] = tab1_vis["Giorni Trascorsi"].fillna(0).astype(int).astype(str) + " gg"
         tab1_vis["Scadenza Invest."] = tab1_vis["SCAD. COMPL. INVEST."].dt.strftime("%d/%m/%Y").fillna("-")
         tab1_vis["Giorni Rimanenti"] = tab1_vis["Giorni Rimanenti"].fillna(0).astype(int).astype(str) + " gg"
+        tab1_vis["Margine temporale (gg)"] = tab1_vis["Margine temporale"].apply(lambda v: f"{int(v)} gg" if pd.notna(v) else "N/D")
 
-        colonne_tab1 = ["Progetto", "Team", "SAL", "Data Determina", "Giorni Trascorsi", "Scadenza Invest.", "Giorni Rimanenti"]
+        colonne_tab1 = ["Progetto", "Team", "SAL", "Data Determina", "Giorni Trascorsi", "Scadenza Invest.", "Giorni Rimanenti", "Margine temporale (gg)"]
         st.dataframe(
             tab1_vis[colonne_tab1],
             use_container_width=True,
             hide_index=True,
-            column_config={"SAL": st.column_config.ProgressColumn("SAL", min_value=0, max_value=100, format="%.1f%%")}
+            column_config={
+                "SAL": st.column_config.ProgressColumn("SAL", min_value=0, max_value=100, format="%.1f%%"),
+                "Margine temporale (gg)": st.column_config.TextColumn("Margine temporale"),
+            }
         )
     else:
         st.info("Nessun progetto in corso con determina provvisoria trovata.")
