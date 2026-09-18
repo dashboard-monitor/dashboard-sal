@@ -1626,7 +1626,7 @@ def grafico_distribuzione_stati(df):
     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
 
-def grafico_confronto_team(df):
+def grafico_confronto_team(df, key="chart_sal_team_default"):
     righe = []
     for team in ["EPAL", "MGIO", "EPAL+MGIO"]:
         team_df = df[(df["Team"] == team) & (df["Stato"] != "Completato")].copy()
@@ -1673,7 +1673,7 @@ def grafico_confronto_team(df):
         cliponaxis=False, 
         hovertemplate="<b>%{y}</b><br>SAL: %{x:.1f}%<br>Progetti: %{customdata[1]}<br>Calcolo: %{customdata[0]}<extra></extra>"
     )
-    st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
+    st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG, key=key)
 
 
 def grafico_reale_atteso(df):
