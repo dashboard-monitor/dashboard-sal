@@ -2524,18 +2524,20 @@ if vista == "Executive":
 
     # --- SEPARAZIONE TABELLE E TRACCIAMENTO COMPLETO DETERMINE ---
     if not priorita_completa.empty and "Ha_Determina" in priorita_completa.columns:
-        tab1_det = priorita_completa[priorita_completa["Ha_Determina"]].copy()
+        # Prende solo i progetti CON determina che NON sono ancora completati
+        mask_det_in_corso = priorita_completa["Ha_Determina"] & (priorita_completa["Stato"] != "Completato")
+        tab1_det = priorita_completa[mask_det_in_corso].copy()
         tab1_det["Is_OK"] = tab1_det["TRASM. RENDI"].astype(str).str.strip().str.upper() == "OK"
         
         allarmi_attivi = tab1_det.sort_values(["Is_OK", "Giorni Trascorsi"], ascending=[True, False]).copy()
         
+        # Tabella Progetti da Accelerare: TUTTI i progetti in Stato Iniziale non completati
         mask_stato_iniziale = (priorita_completa["Stato"] == "In stato iniziale")
         tab2_nodet = priorita_completa[mask_stato_iniziale].sort_values(["SAL", "Progetto"], ascending=[True, True]).copy()
     else:
         allarmi_attivi = pd.DataFrame()
         tab1_det = pd.DataFrame()
         tab2_nodet = pd.DataFrame()
-
         
     # --- TABELLA 1: DETERMINE PROVVISORIE ---
     st.subheader("📌 Priorità operative: Progetti con Determina Provvisoria")
