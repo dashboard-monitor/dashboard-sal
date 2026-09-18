@@ -2389,6 +2389,7 @@ if vista == "Executive":
     col1, col2 = st.columns(2)
     with col1:
         grafico_distribuzione_stati(portfolio_filtrato)
+
     with col2:
         if scope == "Tutti - EPAL+MGIO":
             st.markdown("<h4 style='font-size:1.02rem; font-weight:700; margin-bottom:8px;'>Analisi Effort e Avanzamento Team</h4>", unsafe_allow_html=True)
@@ -2419,6 +2420,27 @@ if vista == "Executive":
             # TAB 2: CONFRONTO SAL TRA I TEAM
             with tab_sal:
                 grafico_confronto_team(portfolio_filtrato, key="chart_sal_team_exec")
+
+        else:
+            # Vista orizzontale classica per i singoli filtri (EPAL, MGIO, EPAL+MGIO)
+            f = round(port_in_corso["Fatto"].dropna().sum(), 1)
+            r = round(port_in_corso["Da fare"].dropna().sum(), 1)
+            if f > 0 or r > 0:
+                fig = px.bar(
+                    pd.DataFrame({"Voce": ["Fatto", "Da fare"], "Giorni": [f, r]}), 
+                    x="Giorni", 
+                    y="Voce", 
+                    orientation="h", 
+                    title=f"Carico di lavoro in corso — {scope}", 
+                    text="Giorni",
+                    color="Voce",
+                    color_discrete_map={"Fatto": "#2E7D32", "Da fare": "#DC2626"}
+                )
+                fig.update_traces(texttemplate="%{text:.1f} gg", textposition="outside")
+                fig.update_layout(height=390, showlegend=False, margin=dict(l=10, r=45, t=35, b=20))
+                st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG, key=f"chart_giorni_singolo_{scope}")
+            else:
+                st.info("Giorni non disponibili.")
         else:
             # Vista orizzontale classica per i singoli filtri (VERDE / ROSSO)
             f = round(port_in_corso["Fatto"].dropna().sum(), 1)
