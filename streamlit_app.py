@@ -2400,6 +2400,7 @@ if vista == "Executive":
                 r_tot = round(port_in_corso["Da fare"].dropna().sum(), 1)
                 
                 if f_tot > 0 or r_tot > 0:
+                    max_val_tot = max(f_tot, r_tot) * 1.20  # Aggiunge il 20% di spazio cuscinetto a destra
                     fig_giorni = px.bar(
                         pd.DataFrame({"Voce": ["Fatto", "Da fare"], "Giorni": [f_tot, r_tot]}), 
                         x="Giorni", 
@@ -2410,8 +2411,9 @@ if vista == "Executive":
                         color="Voce",
                         color_discrete_map={"Fatto": "#2E7D32", "Da fare": "#DC2626"}
                     )
-                    fig_giorni.update_traces(texttemplate="%{text:.1f} gg", textposition="outside")
-                    fig_giorni.update_layout(height=320, showlegend=False, margin=dict(l=10, r=45, t=35, b=20))
+                    fig_giorni.update_traces(texttemplate="%{text:.1f} gg", textposition="outside", cliponaxis=False)
+                    fig_giorni.update_xaxes(range=[0, max_val_tot])
+                    fig_giorni.update_layout(height=320, showlegend=False, margin=dict(l=10, r=85, t=35, b=20))
                     st.plotly_chart(fig_giorni, use_container_width=True, config=PLOTLY_CONFIG, key="chart_giorni_totali_exec")
                 else:
                     st.info("Giorni non disponibili.")
@@ -2421,10 +2423,11 @@ if vista == "Executive":
                 grafico_confronto_team(portfolio_filtrato, key="chart_sal_team_exec")
 
         else:
-            # Vista orizzontale classica per i singoli filtri (EPAL, MGIO, EPAL+MGIO)
+            # Vista per i singoli filtri (EPAL, MGIO, EPAL+MGIO)
             f = round(port_in_corso["Fatto"].dropna().sum(), 1)
             r = round(port_in_corso["Da fare"].dropna().sum(), 1)
             if f > 0 or r > 0:
+                max_val = max(f, r) * 1.20  # Aggiunge il 20% di spazio cuscinetto a destra
                 fig = px.bar(
                     pd.DataFrame({"Voce": ["Fatto", "Da fare"], "Giorni": [f, r]}), 
                     x="Giorni", 
@@ -2435,8 +2438,9 @@ if vista == "Executive":
                     color="Voce",
                     color_discrete_map={"Fatto": "#2E7D32", "Da fare": "#DC2626"}
                 )
-                fig.update_traces(texttemplate="%{text:.1f} gg", textposition="outside")
-                fig.update_layout(height=390, showlegend=False, margin=dict(l=10, r=45, t=35, b=20))
+                fig.update_traces(texttemplate="%{text:.1f} gg", textposition="outside", cliponaxis=False)
+                fig.update_xaxes(range=[0, max_val])
+                fig.update_layout(height=390, showlegend=False, margin=dict(l=10, r=85, t=35, b=20))
                 st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG, key=f"chart_giorni_singolo_{scope}")
             else:
                 st.info("Giorni non disponibili.")
