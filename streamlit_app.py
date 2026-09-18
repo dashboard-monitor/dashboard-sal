@@ -2389,22 +2389,72 @@ if vista == "Executive":
     with col1:
         grafico_distribuzione_stati(portfolio_filtrato)
     with col2:
-        if scope == "Tutti - EPAL+MGIO":
-            grafico_confronto_team(portfolio_filtrato)
-        else:
-            # Modifica: calcola i giorni fatti e da fare usando 'port_in_corso'
-            f = round(port_in_corso["Fatto"].dropna().sum(), 1)
-            r = round(port_in_corso["Da fare"].dropna().sum(), 1)
-            if pd.notna(f) or pd.notna(r):
-                fig = px.bar(
-                    pd.DataFrame({"Voce": ["Fatto", "Da fare"], "Giorni": [f, r]}), 
-                    x="Giorni", y="Voce", orientation="h", title="Carico di lavoro", text="Giorni"
+        # Calcolo metriche per progetti in corso (EPAL vs MGIO)
+        p_epal_inc = portfolio_epal[portfolio_epal["Stato"] != "Completato"] if not portfolio_epal.empty else pd.DataFrame()
+        p_mgio_inc = portfolio_mgio[portfolio_mgio["Stato"] != "Completato"] if not portfolio_mgio.empty else pd.DataFrame()
+
+        f_epal = round(p_epal_inc["Fatto"].dropna().sum(), 1) if not p_epal_inc.empty else 0.0
+        d_epal = round(p_epal_inc["Da fare"].dropna().sum(), 1) if not p_epal_inc.empty else 0.0
+
+        f_mgio = round(p_mgio_inc["Fatto"].dropna().sum(), 1) if not p_mgio_inc.empty else 0.0
+        d_mgio = round(p_mgio_inc["Da fare"].dropna().sum(), 1) if not p_mgio_inc.empty else 0.0
+
+        sal_epal_val, _ = portfolio_sal(p_epal_inc) if not p_epal_inc.empty else (0.0, "")
+        sal_mgio_val, _ = portfolio_sal(p_mgio_inc) if not p_mgio_inc.empty else (0.0, "")
+
+        sal_epal = round(sal_epal_val, 1) if pd.notna(sal_epal_val) else 0.0
+        sal_mgio = round(sal_mgio_val, 1) if pd.notna(sal_mgio_val) else 0.0
+
+        st.markdown("<h4 style='font-size:1.02rem; font-weight:700; margin-bottom:8px;'>Analisi Team (Progetti in corso)</h4>", unsafe_allow_html=True)
+        tab_giorni, tab_sal = st.tabs(["⏳ Carico (Giorni)", "📊 SAL Medio (%)"])
+
+        # TAB 1: GIORNI FATTI E DA FARE PER TEAM
+        with tab_giorni:
+            fig_giorni = go.Figure(data=[
+                go.Bar(
+                    name='Fatto', 
+                    x=['EPAL', 'MGIO'], 
+                    y=[f_epal, f_mgio], 
+                    marker_color='#2E7D32', 
+                    text=[f"{f_epal:.1f} gg", f"{f_mgio:.1f} gg"], 
+                    textposition='auto'
+                ),
+                go.Bar(
+                    name='Da fare', 
+                    x=['EPAL', 'MGIO'], 
+                    y=[d_epal, d_mgio], 
+                    marker_color='#D9DDE3', 
+                    text=[f"{d_epal:.1f} gg", f"{d_mgio:.1f} gg"], 
+                    textposition='auto'
                 )
-                fig.update_traces(texttemplate="%{text:.1f}", textposition="outside")
-                fig.update_layout(height=390, showlegend=False)
-                st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
-            else:
-                st.info("Giorni non disponibili.")
+            ])
+            fig_giorni.update_layout(
+                barmode='group',
+                height=320,
+                margin=dict(l=10, r=10, t=25, b=20),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                template="plotly_white"
+            )
+            st.plotly_chart(fig_giorni, use_container_width=True, config=PLOTLY_CONFIG)
+
+        # TAB 2: SAL PONDERATO MEDIO PER TEAM
+        with tab_sal:
+            fig_sal = go.Figure(data=[
+                go.Bar(
+                    x=['EPAL', 'MGIO'], 
+                    y=[sal_epal, sal_mgio], 
+                    text=[f"{sal_epal:.1f}%", f"{sal_mgio:.1f}%"], 
+                    textposition='auto', 
+                    marker_color=['#1E40AF', '#D97706']
+                )
+            ])
+            fig_sal.update_layout(
+                height=320,
+                yaxis=dict(range=[0, 105], title="SAL (%)"),
+                margin=dict(l=10, r=10, t=25, b=20),
+                template="plotly_white"
+            )
+            st.plotly_chart(fig_sal, use_container_width=True, config=PLOTLY_CONFIG)
 
     st.markdown("---")
     
