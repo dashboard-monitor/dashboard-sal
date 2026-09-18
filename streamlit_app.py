@@ -2390,55 +2390,55 @@ if vista == "Executive":
     with col1:
         grafico_distribuzione_stati(portfolio_filtrato)
     with col2:
-    if scope == "Tutti - EPAL+MGIO":
-        st.markdown("<h4 style='font-size:1.02rem; font-weight:700; margin-bottom:8px;'>Analisi Effort e Avanzamento Team</h4>", unsafe_allow_html=True)
-        tab_giorni, tab_sal = st.tabs(["⏳ Carico complessivo (Giorni)", "📊 SAL % per Team"])
+        if scope == "Tutti - EPAL+MGIO":
+            st.markdown("<h4 style='font-size:1.02rem; font-weight:700; margin-bottom:8px;'>Analisi Effort e Avanzamento Team</h4>", unsafe_allow_html=True)
+            tab_giorni, tab_sal = st.tabs(["⏳ Carico complessivo (Giorni)", "📊 SAL % per Team"])
 
-        # TAB 1: GIORNI FATTI (VERDE) E DA FARE (ROSSO) TOTALI
-        with tab_giorni:
-            f_tot = round(port_in_corso["Fatto"].dropna().sum(), 1)
-            r_tot = round(port_in_corso["Da fare"].dropna().sum(), 1)
-            
-            if f_tot > 0 or r_tot > 0:
-                fig_giorni = px.bar(
-                    pd.DataFrame({"Voce": ["Fatto", "Da fare"], "Giorni": [f_tot, r_tot]}), 
+            # TAB 1: GIORNI FATTI (VERDE) E DA FARE (ROSSO) TOTALI
+            with tab_giorni:
+                f_tot = round(port_in_corso["Fatto"].dropna().sum(), 1)
+                r_tot = round(port_in_corso["Da fare"].dropna().sum(), 1)
+                
+                if f_tot > 0 or r_tot > 0:
+                    fig_giorni = px.bar(
+                        pd.DataFrame({"Voce": ["Fatto", "Da fare"], "Giorni": [f_tot, r_tot]}), 
+                        x="Giorni", 
+                        y="Voce", 
+                        orientation="h", 
+                        title="Carico di lavoro in corso (EPAL+MGIO)", 
+                        text="Giorni",
+                        color="Voce",
+                        color_discrete_map={"Fatto": "#2E7D32", "Da fare": "#DC2626"}
+                    )
+                    fig_giorni.update_traces(texttemplate="%{text:.1f} gg", textposition="outside")
+                    fig_giorni.update_layout(height=320, showlegend=False, margin=dict(l=10, r=45, t=35, b=20))
+                    st.plotly_chart(fig_giorni, use_container_width=True, config=PLOTLY_CONFIG, key="chart_giorni_totali_exec")
+                else:
+                    st.info("Giorni non disponibili.")
+
+            # TAB 2: CONFRONTO SAL TRA I TEAM
+            with tab_sal:
+                grafico_confronto_team(portfolio_filtrato, key="chart_sal_team_exec")
+        else:
+            # Vista orizzontale classica per i singoli filtri (VERDE / ROSSO)
+            f = round(port_in_corso["Fatto"].dropna().sum(), 1)
+            r = round(port_in_corso["Da fare"].dropna().sum(), 1)
+            if f > 0 or r > 0:
+                fig = px.bar(
+                    pd.DataFrame({"Voce": ["Fatto", "Da fare"], "Giorni": [f, r]}), 
                     x="Giorni", 
                     y="Voce", 
                     orientation="h", 
-                    title="Carico di lavoro in corso (EPAL+MGIO)", 
+                    title=f"Carico di lavoro in corso — {scope}", 
                     text="Giorni",
                     color="Voce",
                     color_discrete_map={"Fatto": "#2E7D32", "Da fare": "#DC2626"}
                 )
-                fig_giorni.update_traces(texttemplate="%{text:.1f} gg", textposition="outside")
-                fig_giorni.update_layout(height=320, showlegend=False, margin=dict(l=10, r=45, t=35, b=20))
-                st.plotly_chart(fig_giorni, use_container_width=True, config=PLOTLY_CONFIG, key="chart_giorni_totali_exec")
+                fig.update_traces(texttemplate="%{text:.1f} gg", textposition="outside")
+                fig.update_layout(height=390, showlegend=False, margin=dict(l=10, r=45, t=35, b=20))
+                st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG, key=f"chart_giorni_singolo_{scope}")
             else:
-                st.info("Giorni non disponibili.")
-
-        # TAB 2: CONFRONTO SAL TRA I TEAM
-        with tab_sal:
-            grafico_confronto_team(portfolio_filtrato, key="chart_sal_team_exec")
-    else:
-        # Vista orizzontale classica per i singoli filtri (VERDE / ROSSO)
-        f = round(port_in_corso["Fatto"].dropna().sum(), 1)
-        r = round(port_in_corso["Da fare"].dropna().sum(), 1)
-        if f > 0 or r > 0:
-            fig = px.bar(
-                pd.DataFrame({"Voce": ["Fatto", "Da fare"], "Giorni": [f, r]}), 
-                x="Giorni", 
-                y="Voce", 
-                orientation="h", 
-                title=f"Carico di lavoro in corso — {scope}", 
-                text="Giorni",
-                color="Voce",
-                color_discrete_map={"Fatto": "#2E7D32", "Da fare": "#DC2626"}
-            )
-            fig.update_traces(texttemplate="%{text:.1f} gg", textposition="outside")
-            fig.update_layout(height=390, showlegend=False, margin=dict(l=10, r=45, t=35, b=20))
-            st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG, key=f"chart_giorni_singolo_{scope}")
-        else:
-            st.info("Giorni non disponibili.")
+                st.info("Giorni non disponibili.")    
 
         # TAB 2: SAL % PER TEAM ORIGINALE (EPAL, MGIO, EPAL+MGIO CONDIVISI)
         with tab_sal:
