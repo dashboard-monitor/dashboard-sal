@@ -2540,7 +2540,7 @@ if vista == "Executive":
         tab2_nodet = pd.DataFrame()
         
     # --- TABELLA 1: DETERMINE PROVVISORIE ---
-    st.subheader("📌 Priorità operative: Progetti con Determina (Margine temporale)")
+    st.subheader("📌 Priorità: Progetti con Determina (Margine temporale)")
     if not tab1_det.empty:
         tab1_vis = tab1_det.copy()
         
@@ -2567,7 +2567,7 @@ if vista == "Executive":
         st.info("Nessun progetto in corso con determina provvisoria trovata.")
 
     # --- TABELLA 2: PROGETTI IN STATO INIZIALE ---
-    st.subheader("🎯 Priorità operative: Progetti da accelerare (in Stato Iniziale)")
+    st.subheader("🎯 Priorità: Progetti da accelerare (in Stato Iniziale)")
     if not tab2_nodet.empty:
         tab2_vis = tab2_nodet.copy()
         tab2_vis["Giorni totali"] = tab2_vis["Fatto"].fillna(0) + tab2_vis["Da fare"].fillna(0)
