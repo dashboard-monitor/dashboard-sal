@@ -2225,17 +2225,22 @@ portfolio_tutti = consolida_progetti_univoci(portfolio_concat)
 portfolio_tutti = aggiungi_flag_condiviso(portfolio_tutti, portfolio_epal, portfolio_mgio)
 portfolio_tutti = arricchisci_portafoglio_con_giorni_sal_dettaglio(portfolio_tutti, fogli, sheet_names)
 
-scope_options = ["Tutti - EPAL+MGIO", "EPAL", "MGIO"]
-if not portfolio_tutti.empty and (portfolio_tutti["Team"] == "EPAL+MGIO").any():
-    scope_options.append("EPAL+MGIO")
-    
-scope = st.sidebar.radio("Portfolio", scope_options)
+OPT_TUTTI = "Tutti - EPAL+MGIO (Totale progetti)"
+OPT_EPAL = "EPAL"
+OPT_MGIO = "MGIO"
+OPT_COMUNE = "EPAL+MGIO (Progetti in comune)"
 
-if scope == "EPAL":
+scope_options = [OPT_TUTTI, OPT_EPAL, OPT_MGIO]
+if not portfolio_tutti.empty and (portfolio_tutti["Team"] == "EPAL+MGIO").any():
+    scope_options.append(OPT_COMUNE)
+    
+scope = st.sidebar.radio("Portafoglio Progetti", scope_options)
+
+if scope == OPT_EPAL:
     portfolio = portfolio_epal.copy()
-elif scope == "MGIO":
+elif scope == OPT_MGIO:
     portfolio = portfolio_mgio.copy()
-elif scope == "EPAL+MGIO":
+elif scope == OPT_COMUNE:
     portfolio = portfolio_tutti[portfolio_tutti["Team"] == "EPAL+MGIO"].copy()
 else:
     portfolio = portfolio_tutti.copy()
@@ -2390,50 +2395,25 @@ if vista == "Executive":
         grafico_distribuzione_stati(portfolio_filtrato)
 
     with col2:
-        if scope == "Tutti - EPAL+MGIO":
-            st.markdown("<h4 style='font-size:1.02rem; font-weight:700; margin-bottom:8px;'>Analisi Effort e Avanzamento Team</h4>", unsafe_allow_html=True)
-            tab_giorni, tab_sal = st.tabs(["⏳ Carico complessivo (Giorni)", "📊 SAL % per Team"])
-
-            # TAB 1: GIORNI FATTI (VERDE) E DA FARE (ROSSO) TOTALI
-            with tab_giorni:
-                f_tot = round(port_in_corso["Fatto"].dropna().sum(), 1)
-                r_tot = round(port_in_corso["Da fare"].dropna().sum(), 1)
-                
-                if f_tot > 0 or r_tot > 0:
-                    max_val_tot = max(f_tot, r_tot) * 1.20  # Aggiunge il 20% di spazio cuscinetto a destra
-                    fig_giorni = px.bar(
-                        pd.DataFrame({"Voce": ["Fatto", "Da fare"], "Giorni": [f_tot, r_tot]}), 
-                        x="Giorni", 
-                        y="Voce", 
-                        orientation="h", 
-                        title="Carico di lavoro in corso (EPAL+MGIO)", 
-                        text="Giorni",
-                        color="Voce",
-                        color_discrete_map={"Fatto": "#2E7D32", "Da fare": "#DC2626"}
-                    )
-                    fig_giorni.update_traces(texttemplate="%{text:.1f} gg", textposition="outside", cliponaxis=False)
-                    fig_giorni.update_xaxes(range=[0, max_val_tot])
-                    fig_giorni.update_layout(height=320, showlegend=False, margin=dict(l=10, r=85, t=35, b=20))
-                    st.plotly_chart(fig_giorni, use_container_width=True, config=PLOTLY_CONFIG, key="chart_giorni_totali_exec")
-                else:
-                    st.info("Giorni non disponibili.")
-
-            # TAB 2: CONFRONTO SAL TRA I TEAM
-            with tab_sal:
-                grafico_confronto_team(portfolio_filtrato, key="chart_sal_team_exec")
-
+        if scope == OPT_TUTTI:
+            grafico_confronto_team(portfolio_filtrato)
         else:
-            # Vista per i singoli filtri (EPAL, MGIO, EPAL+MGIO)
             f = round(port_in_corso["Fatto"].dropna().sum(), 1)
             r = round(port_in_corso["Da fare"].dropna().sum(), 1)
-            if f > 0 or r > 0:
-                max_val = max(f, r) * 1.20  # Aggiunge il 20% di spazio cuscinetto a destra
+            if pd.notna(f) and pd.notna(r) and (f > 0 or r > 0):
+                if scope == OPT_COMUNE:
+                    titolo_carico = "Carico di lavoro in corso (Progetti in comune)"
+                else:
+                    titolo_carico = f"Carico di lavoro in corso — {scope}"
+
+                max_val = max(f, r) * 1.20
+
                 fig = px.bar(
                     pd.DataFrame({"Voce": ["Fatto", "Da fare"], "Giorni": [f, r]}), 
                     x="Giorni", 
                     y="Voce", 
                     orientation="h", 
-                    title=f"Carico di lavoro in corso — {scope}", 
+                    title=titolo_carico, 
                     text="Giorni",
                     color="Voce",
                     color_discrete_map={"Fatto": "#2E7D32", "Da fare": "#DC2626"}
