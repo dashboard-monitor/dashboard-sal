@@ -2396,8 +2396,35 @@ if vista == "Executive":
 
     with col2:
         if scope == OPT_TUTTI:
-            grafico_confronto_team(portfolio_filtrato)
+            # I due tab compaiono SOLO quando è selezionato "Tutti - EPAL+MGIO (Totale progetti)"
+            tab_sal, tab_carico = st.tabs(["👥 SAL per Team", "📊 Carico di lavoro"])
+
+            with tab_sal:
+                grafico_confronto_team(portfolio_filtrato, key="chart_sal_team_exec")
+
+            with tab_carico:
+                f = round(port_in_corso["Fatto"].dropna().sum(), 1)
+                r = round(port_in_corso["Da fare"].dropna().sum(), 1)
+                if pd.notna(f) and pd.notna(r) and (f > 0 or r > 0):
+                    max_val = max(f, r) * 1.20
+                    fig = px.bar(
+                        pd.DataFrame({"Voce": ["Fatto", "Da fare"], "Giorni": [f, r]}), 
+                        x="Giorni", 
+                        y="Voce", 
+                        orientation="h", 
+                        title="Carico di lavoro in corso (Totale progetti)", 
+                        text="Giorni",
+                        color="Voce",
+                        color_discrete_map={"Fatto": "#2E7D32", "Da fare": "#DC2626"}
+                    )
+                    fig.update_traces(texttemplate="%{text:.1f} gg", textposition="outside", cliponaxis=False)
+                    fig.update_xaxes(range=[0, max_val])
+                    fig.update_layout(height=390, showlegend=False, margin=dict(l=10, r=85, t=35, b=20))
+                    st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG, key="chart_giorni_tutti")
+                else:
+                    st.info("Giorni non disponibili.")
         else:
+            # Per i singoli filtri (EPAL, MGIO, Progetti in comune) mostra direttamente il grafico senza tab
             f = round(port_in_corso["Fatto"].dropna().sum(), 1)
             r = round(port_in_corso["Da fare"].dropna().sum(), 1)
             if pd.notna(f) and pd.notna(r) and (f > 0 or r > 0):
