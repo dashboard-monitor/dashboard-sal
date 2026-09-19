@@ -2671,8 +2671,18 @@ elif vista == "Pianificazione & Alert":
         # --- TABELLA: PROGETTI IN CORSO E PIANIFICAZIONE ---
         st.markdown("### 📋 Progetti in Corso e Pianificazione Tempistiche")
         
-        # Ordina in modo crescente per Margine temporale (dal più piccolo al più grande)
-        df_tab_plan = df_merged.sort_values(by="Margine temporale", ascending=True, na_position="last").copy()
+        # 1. Crea una colonna temporanea che vale True solo se sono presenti ENTRAMBE le date
+        df_merged["Ha_Entrambe_Date"] = (
+            df_merged["Data determina"].notna() & 
+            df_merged["Data tassativa di scadenza"].notna()
+        )
+
+        # 2. Ordina prima per presenza di entrambe le date (True in alto), poi per Margine temporale crescente
+        df_tab_plan = df_merged.sort_values(
+            by=["Ha_Entrambe_Date", "Margine temporale"], 
+            ascending=[False, True], 
+            na_position="last"
+        ).copy()
         
         df_tab_plan["Data determina"] = df_tab_plan["Data determina"].dt.strftime("%d/%m/%Y").fillna("-")
         df_tab_plan["Data tassativa di scadenza"] = df_tab_plan["Data tassativa di scadenza"].dt.strftime("%d/%m/%Y").fillna("-")
