@@ -2396,11 +2396,8 @@ if vista == "Executive":
 
     with col2:
         if scope == OPT_TUTTI:
-            # I due tab compaiono SOLO quando è selezionato "Tutti - EPAL+MGIO (Totale progetti)"
-            tab_sal, tab_carico = st.tabs(["👥 SAL per Team", "📊 Carico di lavoro"])
-
-            with tab_sal:
-                grafico_confronto_team(portfolio_filtrato, key="chart_sal_team_exec")
+            # "Carico di lavoro" prima a sinistra (default), "SAL per Team" a destra
+            tab_carico, tab_sal = st.tabs(["📊 Carico di lavoro", "👥 SAL per Team"])
 
             with tab_carico:
                 f = round(port_in_corso["Fatto"].dropna().sum(), 1)
@@ -2423,8 +2420,12 @@ if vista == "Executive":
                     st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG, key="chart_giorni_tutti")
                 else:
                     st.info("Giorni non disponibili.")
+
+            with tab_sal:
+                grafico_confronto_team(portfolio_filtrato, key="chart_sal_team_exec")
+
         else:
-            # Per i singoli filtri (EPAL, MGIO, Progetti in comune) mostra direttamente il grafico senza tab
+            # Per i singoli filtri mostra direttamente il grafico del carico di lavoro senza tab
             f = round(port_in_corso["Fatto"].dropna().sum(), 1)
             r = round(port_in_corso["Da fare"].dropna().sum(), 1)
             if pd.notna(f) and pd.notna(r) and (f > 0 or r > 0):
